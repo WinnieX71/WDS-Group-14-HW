@@ -1,0 +1,97 @@
+---
+title: "HW1 Group 14"
+author:
+- Group Member 1 - Winnie
+- Group Member 2 - Lilly
+- Group Member 3 - June
+- Group Member 4 - Akshaj
+- Group Member 5 - Helen
+date: 'Due: 5:30PM, First Monday of Instruction'
+output:
+#  pdf_document:
+#    number_sections: yes
+#    toc: yes
+#    toc_depth: '4'
+  html_document:
+    code_folding: show
+    highlight: haddock
+    number_sections: yes
+    theme: lumen
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+  word_document:
+    toc: yes
+    toc_depth: '4'
+urlcolor: blue
+---
+
+# Assignment Overview
+
+**This is a mini project. Answer the question using our data with a .rmd and .html file of no more than one page. You are allowed to go beyond our data.**
+
+# Background
+
+Baseball is one of the most popular sports in the United States. The highest level of baseball teams belong to Major League Baseball (MLB), which includes the American League and National League with a total of 30 teams. The New York Yankees, Boston Red Sox, Philadelphia Phillies, and the recently rising Oakland Athletics are among the most notable teams in the league.
+
+The Oakland Athletics (A's) is known as a low-budget team that has consistently performed well despite financial constraints. This success is largely attributed to their General Manager Billy Beane, who revolutionized baseball management by applying statistical analysis to team building and player evaluation. This approach, popularized as "Moneyball," focuses on identifying undervalued players through advanced metrics rather than traditional scouting methods.
+
+In an article [Billion Dollar Billy Beane](https://fivethirtyeight.com/features/billion-dollar-billy-beane/), Benjamin Morris studies the relationship between team performance and total payroll among all 30 MLB teams over a 17-year period. The analysis reveals that the Oakland Athletics' performance is comparable to that of high-spending teams like the Boston Red Sox, despite having a significantly lower payroll. This efficiency has led to speculation about Billy Beane's market value, with estimates suggesting he could be worth $12.5 million over 5 years.
+
+**The main goal of this case study is to analyze whether Billy Beane's $12.5 million contract over 5 years is justified by examining team performance relative to payroll spending.**
+
+**We will use `mlb_data` throughout the assignment.**
+
+```{r read data}
+baseball <- read.csv("/Users/winniex/Desktop/WDS/Module/Module_1_EDA/data/baseball.csv")
+str(baseball)
+```
+
+# EDA 
+
+*[Students: Complete an EDA analysis below to explore the relationship between team payroll and performance, focusing on Oakland Athletics vs Boston Red Sox. You may use any types of graphs or figures that you feel are appropriate to help answer the question. This work is intentionally unguided and meant to help you start thinking about how you want to execute your final project.]*
+
+```{r}
+# Add your EDA analysis here
+library(dplyr)
+
+baseball_avg <- baseball %>%
+  group_by(team) %>%
+  mutate(avg_win_pct=mean(win_pct)) %>%
+  mutate(total_payroll=sum(payroll)/1000) %>%
+  select(team, total_payroll, avg_win_pct) %>%
+  distinct()
+```
+
+```{r}
+#install.packages("ggplot2")
+# Install the package (you only need to do this once)
+# install.packages("ggrepel")
+
+# Load the package in your script
+library(ggrepel)
+
+library(ggplot2)
+
+
+selected_teams <- c("Oakland Athletics", "Boston Red Sox")
+
+baseball_avg %>%
+  ggplot(aes(x = total_payroll, y = avg_win_pct)) +
+  geom_point() + 
+  geom_smooth(method='lm', se = TRUE) +
+  # only show names of selected_teams
+  geom_text_repel(data = subset(baseball_avg, team %in% selected_teams),
+                  aes(label = team, color = team), size = 5)
+
+
+```
+
+# Conclusion
+
+*[Students: Based on your EDA analysis, determine whether Billy Beane's $12.5 million contract is justified based on your analysis.]* This is the mini-report conclusion section where you summarize your findings and provide a final assessment of the value of Billy Beane's contract in relation to the performance of the Oakland Athletics compared to other teams like the Boston Red Sox. Make sure to keep it to only 1 page. 
+
+The value of Billy Beane's contract is not justified. This is because this assessement of $12.5 million dollars is drawn from the line of best fit where on the graph, the vertical distance aka the residual of avg_win_pct is minimized. However, for this assessment to be valid, this assessment should have the horizontal distance, or the residual of total_payroll minimized in a line of best fit to have an accurate assessment of the contract. 
+
+
+
