@@ -1,0 +1,192 @@
+---
+title: "WDS, HW 2 Group Probability and Statistics"
+author: 
+- June
+- Akshaj
+- Helen
+- Winnie
+- Lilly
+date: 'Due: 5:30PM, First Tuesday of Instruction'
+output:
+ html_document:
+    code_folding: show
+    highlight: haddock
+    #theme: lumen
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+  # pdf_document:
+  #   toc: yes
+  #   toc_depth: '4'
+#urlcolor: blue
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, results = "hide", fig.width=8, fig.height=4)
+options(scipen = 0, digits = 3)  # controls base R output
+# check if you have ISLR package, if not, install it
+if(!require('pacman')) {install.packages('pacman')}
+pacman::p_load(ISLR, readxl, tidyverse, magrittr, dplyr, ggplot2)
+```
+
+
+\pagebreak
+
+
+# Objectives 
+
+*The main purpose for this homework is to tell the difference between probability and statistics.* Using the Roulette game as illustration, we go through the main elements of probability and statistics. We then learn how to estimate unknown parameters and perform hypothesis testing. Simulations help us to understand the interpretation of a confidence interval. 
+
+- Continue to get used to `RStudio` and `RMarkdown`
+- Probability
+  - Random variables and their distributions
+  - Population parameters: expected values and variances
+  - Normal variables
+  - Central limit theorem (CLT)
+
+- Statistics
+  - Sample means and sample variances
+  - Use sample mean to estimate the population mean
+  - Confidence intervals/hypothesis tests
+  
+- Packages/functions
+    - `dplyr`
+    - `ggplot`
+    - `pnorm()`, `qnorm()`, `dnorm()`
+
+
+# Review materials
+
+
+- Study Module 2: Probability_Statistics_101
+- Study Module 3: Probability_Statistics_102
+
+# Question 1: Confidence Intervals 
+    
+This exercise is designed to help you understand the notion of confidence interval and understand confidence interval through simulations. The following code is equivalent to playing a single game of red-black roulette. Press the "run current chunk" button in the upper right as many times as you want to see if you would win or lose money. Any negative number means you have lost money, any positive number means you have won.
+
+```{r a single game, echo = TRUE}
+
+rnorm(100, mean= -.0526, sd = .1)
+
+```
+
+Now lets take that same idea and automatically do it as many times as we choose.
+
+Let $Y$ be the average winning amount among 100 games of betting \$1 each time in the Red-Black Roulette game. We know that $Y$ follows approximately a normal distribution with mean $\mu = -.0526$ and standard deviation $\sigma = .1$. We will start to record the game payoff each time but pretend that we do not know the true mean is -.0526. 
+
+To help out we provide the following R-chunk that provides 100 confidence intervals from 100 random samples. This loop runs n_sim times. In each run, it generates a new sample, calculates its mean and standard deviation, and computes the 95% CI. We want to tell whether the 100 confidence intervals capture the true population mean. Modify the following code to simulate 100 runs for your purpose accordingly.
+
+```{r, eval = T, echo = T}
+# Need to uncomment the following lines and fill in the XX's
+n_sim <- 100 # number of simulations
+mu <- -0.0526 # True population mean
+
+# Initialize vectors to store the results of each simulation
+mu_hat_vals <- numeric(n_sim)   # To store the sample mean of each simulation
+upper_ci <- numeric(n_sim)    # To store the upper bound of the CI
+lower_ci <- numeric(n_sim)    # To store the lower bound of the CI
+
+# --- Carry out the simulation ---
+# This loop runs n_sim times. In each run, it generates a new sample,
+# calculates its mean and standard deviation, and computes the 95% CI.
+for (i in 1:n_sim){
+  # Generate a sample of 50 observations from a normal distribution
+  y <- rnorm(50, mean = mu, sd = .1)
+  
+  # Calculate the sample mean and standard deviation
+  sample_mean <- mean(y)
+  sample_sd <- sd(y)
+  
+  # Store the sample mean for this simulation
+  mu_hat_vals[i] <- sample_mean
+  
+  # Calculate and store the 95% confidence interval bounds
+  upper_ci[i] <- sample_mean + 1.96 * sample_sd / sqrt(50)
+  lower_ci[i] <- sample_mean - 1.96 * sample_sd / sqrt(50)
+}
+
+ci_df <- data.frame(
+  id = 1:n_sim,
+  mu_hat = mu_hat_vals,
+  lower = lower_ci, 
+  upper = upper_ci
+)
+```
+
+Now, we want to plot the 100 simulates to see how many of them include the the true mean. We provided the code for this plot below.
+
+```{r, eval = T, echo = T}
+ci_df$captured <- ci_df$lower <= mu & ci_df$upper >= mu
+
+# --- Plotting with ggplot2 ---
+ggplot(ci_df, aes(y = id, color = captured)) +
+  # Draw the confidence interval for each simulation as a line segment
+  geom_segment(aes(x = lower, xend = upper, yend = id), linewidth = 0.8) +
+  
+  # Add points for the sample means (mu_hat)
+  geom_point(aes(x = mu_hat), size = 1.5) +
+  
+  # Add a vertical dashed line for the true population mean
+  geom_vline(xintercept = mu, linetype = "dashed", color = "red", linewidth = 1) +
+  
+  # Customize the colors. TRUE (captured) is blue, FALSE (not captured) is orange.
+  scale_color_manual(values = c("TRUE" = "steelblue", "FALSE" = "darkorange")) +
+  
+  # Add labels and a title for clarity
+  labs(
+    title = "100 Simulated 95% Confidence Intervals",
+    subtitle = paste("True Mean (μ) =", mu),
+    x = "Value",
+    y = "Simulation ID",
+    color = "Captured True Mean?"
+  ) +
+  
+  # Apply a clean, minimal theme
+  theme_minimal() +
+  
+  # Additional theme adjustments for better readability
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    plot.subtitle = element_text(hjust = 0.5)
+  )
+```
+
+
+# Mini Report
+
+**After running your confidence interval simulation, write a brief analysis (200-300 words) addressing the following:**
+
+- Do your results make sense? Why or why not? 
+
+Our results make sense in this context. In the plot above, we can see a 100 simulated confidence intervals plotted out. Out of those 100, 5 of the confidence intervals do not include the true mean in their range, showing that overall, showing that 95% of the confidence intervals contain the true mean. This test results aligns with what we would expect from 95% confidence intervals as simply put, 95% of the confidence intervals include the true mean. This simulation shows that "95% confident" means after numerious trials, we are sure that 95% of the interval calculated will capture the true population mean. 
+
+Null Hypothesis: mu = -0.0526
+Alternative Hypothesis mu ≠ -0.0526
+
+
+**In your response, discuss:**
+
+- How many of your 100 confidence intervals captured the true population mean
+- Whether this aligns with what you'd expect from 95% confidence intervals
+- What this simulation demonstrates about the meaning of "95% confident"
+- We wanted to investigate whether the true mean is different from the value of -.0526. What is the null hypothesis and the alternative hypothesis for this investigation?
+
+## Additional Questions
+**Choose 1-2 of these questions to explore:**
+
+- What does it mean when an interval "captures" vs "misses" the true mean?
+
+Capturing a true mean with an interval means that the true mean is included in the true mean, and "missing" the true mean means that for that interval, the true mean isn't included in the interval 
+
+- How might changing the sample size or confidence level affect your results?
+
+- What would happen if you repeated this entire simulation?
+
+We would have higher confidence that the intervals would more accurately entrap the true mean as we would have ran more trials. 
+
+- How does this help clarify common misconceptions about confidence intervals?
+
+Support your discussion with specific observations from your plot and numerical results.
