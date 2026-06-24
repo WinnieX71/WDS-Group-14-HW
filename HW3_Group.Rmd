@@ -1,0 +1,247 @@
+---
+title: "HW3 Group"
+author:
+- Group Member 1
+- Group Member 2
+- Group Member 3
+- Group Member 4
+- Group Member 5
+date: 'Due: 5:30PM, First Wednesday'
+output:
+  pdf_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: '4'
+  html_document:
+    code_folding: show
+    highlight: haddock
+    number_sections: yes
+    theme: lumen
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+  word_document:
+    toc: yes
+    toc_depth: '4'
+urlcolor: blue
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, fig.width=8, fig.height=4)
+options(scipen = 0, digits = 3)  # controls base R output
+# check if you have ISLR package, if not, install it
+if(!require('pacman')) {install.packages('pacman')}
+pacman::p_load(ISLR, tidyverse, data.table) # add the packages needed
+```
+
+
+In this section we will generate data from a true linear model. The purpose here is to 
+
+* Understand a linear model
+* See what are the parameters
+* See what are the estimates
+* See how OLS behave
+* Interpretations of confidence intervals
+
+### A true linear model 
+
+Generate data where the true linear model is 
+
+$\Y= .60 + .25x_1 + \epsilon$ and the standard deviation is .1.
+
+```{r  generate data, echo = TRUE}
+# Generate a dataset with the following setup:
+n <- 30
+x <- seq(0.5, 2.5, length = n)
+set.seed(1)
+beta0 <- 0.6
+beta1 <- 0.25
+sigma <- 0.05
+y <- beta0 + beta1 * x + rnorm(n, sd = sigma)
+eps <- rnorm(n, sd = sigma)
+data1<-as.data.frame(cbind(x,y, eps))
+ggplot(data1, aes(x = x , y = y)) +
+geom_point(col = "blue") +
+# Overlay the true mean function
+geom_abline(aes(intercept = beta0, slope = beta1), col = "green")+
+annotate("text", x = Inf, y = Inf, hjust = 1.1, vjust = 2, 
+           label = paste("Green Line (Truth): Intercept =", round(beta0, 2), 
+                         "Slope =", round(beta1, 2)), 
+           color = "green")+
+ggtitle("Simulated data and the true linear model")
+
+```
+
+Next, given the data without the truth (beta0 and beta1) which is the case in real life we would want to estimate the unknown via least squared estimates. How do we do comparing with the truth? 
+
+```{r}
+# Generate a dataset with the following setup:
+n <- 30
+x <- seq(0.5, 2.5, length = n)
+
+set.seed(1)  
+ 
+# True beta0 and beta1
+
+# beta0 <- 
+# beta1 <-
+# sigma <- 
+
+y <- beta0 + beta1 * x + rnorm(n, sd = sigma)
+# eps <- rnorm(n, sd = sigma)
+data1<-as.data.frame(cbind(x,y))
+
+# Calculate the LS estimates via lm() which are called regression coefficients
+fit <- lm(y ~ x, data = data1)
+lm_beta0 <- fit$coefficients[1]
+lm_beta1 <- fit$coefficients[2]
+
+```
+
+Use the summary() command to compare `fit` to the truth
+
+```{r}
+
+summary(fit)
+```
+
+```{r}
+
+
+# We put three lines over the scatter plot: 
+ggplot(data1, aes(x = x , y = y)) +
+  geom_point() +
+  geom_abline(aes(intercept = beta0, slope = beta1), col = "green") +
+  geom_smooth(method="lm", se=F, col = "red") +
+  geom_hline(aes(yintercept = mean(y)), color = "blue") +
+  ggtitle("Simulation of a linear model") +
+  xlab("Payroll") +  # Replace with your X axis label
+  ylab("Win Percentage") +  # Replace with your Y axis label
+  annotate("text", x = Inf, y = Inf, hjust = 1.1, vjust = 2, 
+           label = paste("Green Line (Truth): Intercept =", round(beta0, 2), 
+                         "Slope =", round(beta1, 2)), 
+           color = "green") +
+  annotate("text", x = Inf, y = Inf, hjust = 1.1, vjust = 25.5, 
+           label = paste("Red Line (Estimates): Intercept =", round(lm_beta0, 2), 
+                         "Slope =", round(lm_beta1, 2)), 
+           color = "red")
+```
+
+Please change the `set.seed(1)` above to see the beauty of randomness!!!!
+
+
+### Confidence intervals and hypotheses tests
+
+We continue the simulation settings to see the properties of OLS estimators and what a confidence interval means. We also demonstrate how hypothesis tests work.
+
+
+1. Generate K random samples of size 30 from the true linear model:
+
+```{r}
+# n <- 
+# set.seed(1)
+K <- 30  # Number of samples
+x <- seq(0.5, 2.5, length = n)
+
+beta0_true <- 0.6335
+beta1_true <- 0.2331
+sigma <- 0.05
+
+y <- beta0_true + beta1_true * x + rnorm(n, sd = sigma)
+
+generate_sample <- function() {
+  y <- beta0_true + beta1_true * x + rnorm(n, sd = sigma)
+  data.frame(x = x, y = y)
+}
+
+samples <- replicate(K, generate_sample(), simplify = FALSE)
+
+# samples
+```
+
+2. Collect K many $\hat \beta_1$ using `lm`
+
+```{r message=FALSE, warning=FALSE}
+beta1_hats <- sapply(samples, function(sample) {
+  model <- lm(y ~ x, data = sample)
+  coef(model)[2]
+})
+data_temp <- data.frame(beta1_hats)
+
+
+# Overlay histogram and a normal curve
+ ggplot(data_temp, aes(x = beta1_hats)) +
+  geom_histogram(aes(y = ..density..), bins = 20, fill = "skyblue", color = "black", alpha = 0.7) +
+   stat_function(fun = dnorm, args = list(mean = mean(beta1_hats), 
+                                         sd = sd(beta1_hats)), colour = "red",
+  							size = 1.5)+
+  labs(title = "Distribution of Beta1 Estimates", x = expression(hat(beta)[1]), y = "Density")
+
+
+```
+
+3. Plot 95\% confidence interval for each round. 
+
+
+```{r message=FALSE, warning=FALSE}
+ci_data <- data.frame(
+  lower = sapply(samples, function(sample) {
+    ci <- confint(lm(y ~ x, data = sample))[2, ]
+    ci[1]
+  }),
+  upper = sapply(samples, function(sample) {
+    ci <- confint(lm(y ~ x, data = sample))[2, ]
+    ci[2]
+  })
+)
+
+ci_data$miss <- !(beta1_true >= ci_data$lower & beta1_true <= ci_data$upper)
+sum(ci_data$miss)/K  # proportion of the interverals missed the truth
+
+# set.seed(1)
+
+ci_plot <- ggplot(ci_data, aes(y = 1:K)) +
+  geom_linerange(aes(xmin = lower, xmax = upper, color = miss), size = 0.4) +
+  geom_point(aes(x = beta1_true), color = "blue", size = 1) +
+  scale_color_manual(values = c("FALSE" = "black", "TRUE" = "red"), guide = FALSE) +
+  labs(title = "95% Confidence Intervals for Beta1", x = expression(hat(beta)[1]), y = "Sample #") +
+  theme_minimal()
+
+print(ci_plot)
+
+
+```
+
+How many times our 95\% confidence intervals have missed the target $\beta_0=.05$? 2
+
+
+### A normal variable
+
+First take a look at a standard normal variable. We will use `rnorm()` and `pnorm()` functions to generate a normal variable and to calculate the probabilities of the variable falling in a range of specified numbers. 
+```{r }
+# to show what a standard z look like
+# n=1000
+z <- rnorm(1000, mean=0, sd=1) 
+# 1. mean and sd
+mean(z) 
+sd(z)
+# to display z variable
+hist(z, breaks=100)
+
+# prop of z > 1.5
+1-pnorm(1.5, mean=-.008, sd=1.04)
+
+# prop of 6< z <7
+pnorm(7, mean=-.008, sd=1.04) - pnorm(6, mean=-.008, sd=1.04)
+```
+
+
+4. Repeat Steps 1-3, but with a sample size of 100. How does this change our results?
+
+It changes the number of confidence interval that missed the target, but the proportion is around the same.
+
+
+5. Repeat Steps 1-3, keeping the sample size at 30, but changing the standard deviation from .1 to .05. How does this change our results?
+
+The distribution is the same as the original, the beta_hat range is smaller
