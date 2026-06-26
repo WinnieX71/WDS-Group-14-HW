@@ -1,0 +1,145 @@
+---
+title: "WDS HW5 Multiple regression"
+author:
+- Group Member 1
+- Group Member 2
+- Group Member 3
+- Group Member 4
+- Group Member 5
+date: 'Due: 5:30PM,  Friday July 18, 2025'
+output:
+  html_document:
+    code_folding: show
+    highlight: haddock
+    number_sections: yes
+    theme: lumen
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+  pdf_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: '4'
+  word_document:
+    toc: yes
+    toc_depth: '4'
+urlcolor: blue
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, results = "hide", fig.width=8, fig.height=4, message = FALSE, warning = FALSE)
+options(scipen = 0, digits = 3)  # controls base R output
+# check if you have ISLR package, if not, install it
+if(!require('pacman')) {install.packages('pacman')}
+pacman::p_load(ISLR, readxl, tidyverse, magrittr, dplyr, ggplot2, leaps, car, contrast, rgl) 
+# ISLR will be installed and the that AUTO needed for this hw will be there
+```
+
+
+\pagebreak
+
+
+
+# 0 Case study: Chicago Housing Prices
+
+Real estate decisions, whether for investment or personal use, are often accompanied by numerous questions. How does one determine an appropriate price when buying or listing a property? Does finishing a basement or adding a porch significantly increase the home's value? Multiple regression, an evolved form of simple regression, delves into the relationships between one response variable and several predictor variables. This homework aims to elucidate these regression techniques.
+
+Get familiar with this dataset first. 
+
+|Feature|Description|
+|--------------|----------------------------------|
+|log_price| Log sale price |
+|bsmt_fin| finish: 1: Formal Rec Room, 2: Apartment, 3: Unfinished|
+|beds|Bedrooms: Number of bedrooms in the building |
+|bldg_1ksf| Building square feet (thousand square feet) |
+|fbath|Full Baths: Number of full bathrooms, defined as having a bath or shower. If this value is missing, the default value is set to 1. |
+|hbath|Half baths: Number of half baths, defined as bathrooms without a shower or bathtub. |
+|land_sf| Lot/land square feet|
+|rooms|Rooms: Number of total rooms in the building (excluding baths). Not to be confused with bedrooms. |
+|type_resd| Type of resident: 1: 1 Story, 2: 2 Story, 3: 3 Story +, 4: Split Level, 5: 1.5 Story|
+|lake_michigan_dist_ft | Distance in feet to the Lake Michigan coastline.|
+|nearest_cta_stop_dist_ft| Distance in feet to the nearest CTA (subway) stop. |
+|census_tract_geoid| Census tract GEOID by the Census Bureau. |
+|neighborhood| Community area. |
+|longitude| Longitude of the property. |
+|latitude| Latitude of  the property.|
+|time_sale_month_of_year| Month of the year of the sales.
+
+```{r}
+
+data <- read_csv("data/sales.csv", show_col_types = FALSE)
+
+```
+
+# Regression Model
+
+i.) Build a  model called `fit1` to estimate mean log_price for properties using `neighborhood`, `bldg_1ksf`,  and `fbath`. Display the `summary()` of `fit1`.
+
+```{r example, echo=TRUE, results = "show"}
+
+data <- data %>% 
+  mutate(neighborhood = as.factor(neighborhood))
+
+fit1 <- lm(log_price ~ neighborhood+bldg_1ksf+fbath, data)
+# 
+summary(fit1)
+
+
+```
+
+ii.) Based on `fit1` list the 3 neighborhoods in descending order based on average housing price.
+
+1. Lincoln park
+2. hyde park
+3. near west side
+
+iii.) Write the equation for fit 1
+
+$$
+y = \beta_0 + \beta_1*neighborhoodLINCOLN PARK + \beta_2*neighborhoodNEAR WEST SIDE + \beta_3*bldg_1ksf + \beta_4*fbath
+$$
+
+iv.) According to `fit1`, what is the mean difference in `log_price` between a house with 3 full bathrooms (`fbath`) and a house with 4 full bathrooms.
+
+beta_4
+
+# Regression Model with Categorical Predictors
+
+i.) Build a  model called `fit2` to estimate mean `log_price` for properties using `neighborhood`, `bldg_1ksf`,  and `fbath`. However, change `fbath` to a discrete(factor) variable. Display the `summary()` of `fit2`.
+
+```{r, results = "show"} 
+
+
+fit2 <- lm(log_price ~ neighborhood+bldg_1ksf + as.factor(fbath), data)
+
+summary(fit2)
+
+```
+
+
+ii.) What is the mean difference in `log_price` between a house with 3 full bathrooms (`fbath`) and a a house with 4 full bathrooms according to `fit2`?
+
+0.5239 - 0.5199 = 0.004
+
+iii.) Explain how the interpretation of coefficients for `fbath` in `fit2` is different from the coefficient for `fbath` in `fit1`. Which model is preferred? Why? 
+
+While fit2 uses discrete factor variables to have seperate coefficients for each number of baths, fit1 uses a normal linear model to compare the number of baths. As the f value of fit2 is smaller than for fit1, fit1 is preferred as it shows that there is more variance accounted for by the variable rather than the randomness of the data. 
+
+# Optional: Question 4
+
+Interactions with neighborhood and sq. footage with `fbath` as a factor
+
+i.) Build a  model called `fit3` to estimate mean log_price for properties using `neighborhood`, `bldg_1ksf`,  and `fbath`, using the best specification of `fbath` from `fit1` or `fit2`. Construct your model such that the effect of `bldg_1ksf` is not constant across `neighborhood`. Display the `summary()` of `fit3`.
+
+
+```{r, results = "show"}
+fit3 <- lm(log_price ~ neighborhood + bldg_1ksf + fbath +bldg_1ksf*neighborhood, data)
+
+summary(fit3)
+
+```
+
+ii.) Which neighborhood has their average housing price benefit the most from an increase in `bldg_1ksf`? Justify your answer by interpreting coefficients from `fit3`.
+
+LINCOLN PARK has the most housing benefit as the coefficient for LINCOLN PARK is positive, meaning it is larger than the value than for hyde park, and the NEAR WEST SIDE coefficient is negative, hence hyde park has a larger value, so LINCOLN PARK benefits the most from an increase in bldg_1ksf. 
