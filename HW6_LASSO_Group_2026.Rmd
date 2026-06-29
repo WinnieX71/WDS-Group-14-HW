@@ -1,0 +1,380 @@
+---
+title: "WDS HW6, Covid Case Study"
+author:
+- Winnie
+- Akshaj
+- June
+- Lilly
+- Helen
+date: 'Due: 5:30PM, Second Monday of Instruction'
+output:
+  html_document:
+    code_folding: show
+    highlight: haddock
+    theme: lumen
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
+urlcolor: blue
+---
+
+```{r Setup, include=FALSE, results='hide', warning=FALSE}
+knitr::opts_chunk$set(echo = T, fig.width=8, fig.height=4)
+options(scipen = 999, digits = 3)  # controls base R output
+
+# Package setup
+if(!require("pacman")) install.packages("pacman")
+
+pacman::p_load(car, tidyverse, dplyr, ggplot2, data.table, lubridate, 
+               glmnet, kableExtra, stargazer, scales, viridis, knitr, readr, usmap)
+
+```
+
+# Background
+
+The outbreak of the novel Corona virus disease 2019 (COVID-19) [was declared a public health emergency of international concern by the World Health Organization (WHO) on January 30, 2020](https://www.who.int/dg/speeches/detail/who-director-general-s-statement-on-ihr-emergency-committee-on-novel-coronavirus-(2019-ncov)). Upwards of [112 million cases have been confirmed worldwide, with nearly 2.5 million associated deaths](https://covid19.who.int/). Within the US alone, there have been [over 500,000 deaths and upwards of 28 million cases reported](https://covid.cdc.gov/covid-data-tracker/#trends_dailytrendscases). Governments around the world have implemented and suggested a number of policies to lessen the spread of the pandemic, including mask-wearing requirements, travel restrictions, business and school closures, and even stay-at-home orders. The global pandemic has impacted the lives of individuals in countless ways, and though many countries have begun vaccinating individuals, the long-term impact of the virus remains unclear.
+
+The impact of COVID-19 on a given segment of the population appears to vary drastically based on the socioeconomic characteristics of the segment. In particular, differing rates of infection and fatalities have been reported among different [racial groups](https://www.cdc.gov/coronavirus/2019-ncov/covid-data/investigations-discovery/hospitalization-death-by-race-ethnicity.html), [age groups](https://www.cdc.gov/coronavirus/2019-ncov/covid-data/investigations-discovery/hospitalization-death-by-age.html), and [socioeconomic groups](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7221360/). One of the most important metrics for determining the impact of the pandemic is the death rate, which is the proportion of people within the total population that die due to the the disease. 
+
+
+**There are two main goals for this case study.** 
+
+1. Number of deaths vary drastically across State. We want to find out how State is related to the death rate.
+
+2. There have been studies on COVID racial disparities. Is there evidence in our data to show that the proportion of race relates to the death at county level?
+
+To make our case study here simple and manageable in a timely fashion, we have assembled a subset of data called: `covid_data.csv`. Each county is uniquely identified by its FIPS code. It includes county level total number of deaths by a chosen date, together with selected demographic information. `State` names is also included in the data. The name of each variable should be self-explanatory. 
+
+What is a good way to measure COVID death rate? There are quite a number of counties with a very low or zero number of deaths. We have proposed an effective way of handling such an imbalanced situation. We created a new measurement of death-rate then applied the log function to get the variable labeled as `log_death_rate`. To be specific, `log_death_rate = log( (cum_deaths+1)/(TotalPopEst2019+2) ))` where `cum_deaths` is the total number of death by `2020-09-01`. We then created the data `covid_data.csv` by combining the `log_death_rate` with a subset of county level demographic information. See Appendix for the detailed construction.
+
+
+
+**we will use `covid_data` throughout the assignment.** 
+
+```{r read data}
+covid_data <- read_csv("data/covid_data.csv")
+county <- read_csv("data/covid_county.csv")
+str(covid_data)
+```
+
+**NOTE: This is a rather long project. It gives us an idea what a project looks like.**
+
+# EDA 
+
+**i.** For the `covid_data`, how many variables are included here? How many counties are there in this data? Are there any missing values in this data? (use a combination of the `sum()` and `complete.cases()` functions) 
+
+38 variables
+
+```{r}
+# Summarize the data
+summary(covid_data)
+dim(covid_data)
+```
+
+
+During the course of pandemic, policies are usually implemented at state level and thus vary among states, which may further lead to the variability of death rate among states. We first study the death rates at state level via the following EDA. 
+
+**ii.** Calculate the number of counties by State and report the top 5 State with the most counties. (`count()` and `arrange()` functions will be helpful here)
+
+```{r count counties}
+
+# Count counties by State
+
+county %>%
+  count(County) %>%
+  arrange(desc(n))
+
+```
+
+**iii.** To display the variations of the death rates by state. Make a heat map which shows the average of `log_death_rate` by State. Write a brief summary based on the map. 
+
+```{r heat map}
+# Make a state-level heat map
+#| warning: false
+library(usmap)
+#names(data.s)  # hist(data.s$crime.rate)
+#levels(data.s$state)
+
+state_avg <- covid_data %>%                                                                                        
+    group_by(State) %>%                                                                                              
+    summarize(avg_log_death_rate = mean(log_death_rate)) %>%                                                         
+    rename(state = State)
+
+ plot_usmap(data = state_avg, values = "avg_log_death_rate") +
+    theme(legend.position = "right") +
+    labs(title = "Average Log Death Rate by State")
+```
+**iv.** Similarly, make a heatmap of `log_death_rate` by county (FIPS). Remove the boarder using the argument `color = NA`.
+
+
+```{r heat map county}
+# Make a county-level heat map
+ county_map_data <- covid_data %>%                                                                                  
+    select(fips = FIPS, log_death_rate)
+
+plot_usmap(regions = "counties", data = county_map_data, values = "log_death_rate", color = NA) +
+    theme(legend.position = "right") +
+    labs(title = "Log Death Rate by County")
+
+
+```
+
+
+# Analyses
+
+There are a number of studies indicating that COVID affected minority groups more.
+In the following analyses, we focus on the effect of `WhiteNonHispanicPct2010` over `log_death_rate`. 
+
+## fit1: A Linear Model
+
+Run a regression of `log_death_rate` vs. `WhiteNonHispanicPct2010` controlling for `State`  (without interactions)  as `fit1`.
+
+```{r linear model fit1}
+fit1 <- lm(log_death_rate ~ WhiteNonHispanicPct2010 + State, data = covid_data)
+
+```
+
+**i.** Report the summary table of `fit1`. Is `WhiteNonHispanicPct2010` a significant variable at the .01 level controlling for `State`? Use no more than 2 sentences to interpret the coefficient of `WhiteNonHispanicPct2010` over the `log_death_rate` in `fit1`.
+
+As the p-value is extremely small, it is a signficant variable at the .01 level controlling for state. As WhiteNonHispanicPct2010 increases by 1, log_death_rates decrease by 0.018675.
+
+```{r}
+summary(fit1)
+```
+
+**Answer**:
+
+
+**ii.** Controlling for `WhiteNonHispanicPct2010`, are the mean `log_death_rate`'s the same among all states? Can you reject $H_0$, i.e., all the state have the same mean `log_death_rate`, at $\alpha = .01$? 
+
+```{r}
+Anova(fit1)
+```
+**Answer**: We can reject H0 as the p value is smaller than .01 with a value of 4.60e-76, meaning that the log_death_rate is not the same among all states. 
+
+**iii** Controlling for `WhiteNonHispanicPct2010`, which state is estimated with the highest mean `log_death_rate`? 
+
+```{r}
+states_summary <- fit1$coefficients[-c(1:2)]
+states_summary[order(-states_summary)]
+```
+**Answer**: StateNJ
+
+
+## fit.final: LASSO/Relaxed LASSO
+
+In this section, using all possible variables available in `covid_data`, we will build a final parsimonious model to identify a set of important variables that are related to `log_death_rate` using first LASSO then backward elimination.
+
+As you have seen `State` explains a large portion of variability in `log_death_rate`, **we will keep `State` in all the following questions.**
+
+**i.** Use LASSO to pick up a few variables. To be specific let us control the following settings to get the same results. 
+
+* Use `set.seed(1)` to control the cross-validation
+* Use 12-fold cross validations
+* Pick up the variables using  `lambda.1se` 
+* Force State in `cv.glmnet()` using `penalty.factor`
+
+We provide the following chunk for you. Answer the following questions: 
+
+**a)** Why do we need to take out `FIPS` when constructing the design matrix `X`?
+
+Cause FIPS is a county code that can be ignored as we already have the county names provided.
+
+**b)** How many columns in the design matrix `X` are for states? In `covid_data`, we have 49 different "State"'s, including 48 continent states and DC (excluding Alaska and Hawaii). Why there is a discrepancy? 
+
+There's 48 columns in the design matrix X for states and 49 unique states. This is because the model matrix creates 48 columns in the matrix, so you need to have 1 column as a baseline catagory.
+
+
+**c)** Report the variables selected by the LASSO using `lambda.1se`.
+
+ [1] "StateAR"                            "StateAZ"                           
+ [3] "StateCA"                            "StateCO"                           
+ [5] "StateCT"                            "StateDC"                           
+ [7] "StateDE"                            "StateFL"                           
+ [9] "StateGA"                            "StateIA"                           
+[11] "StateID"                            "StateIL"                           
+[13] "StateIN"                            "StateKS"                           
+[15] "StateKY"                            "StateLA"                           
+[17] "StateMA"                            "StateMD"                           
+[19] "StateME"                            "StateMI"                           
+[21] "StateMN"                            "StateMO"                           
+[23] "StateMS"                            "StateMT"                           
+[25] "StateNC"                            "StateND"                           
+[27] "StateNE"                            "StateNH"                           
+[29] "StateNJ"                            "StateNM"                           
+[31] "StateNV"                            "StateNY"                           
+[33] "StateOH"                            "StateOK"                           
+[35] "StateOR"                            "StatePA"                           
+[37] "StateRI"                            "StateSC"                           
+[39] "StateSD"                            "StateTN"                           
+[41] "StateTX"                            "StateUT"                           
+[43] "StateVA"                            "StateVT"                           
+[45] "StateWA"                            "StateWI"                           
+[47] "StateWV"                            "StateWY"                           
+[49] "PctEmpTrans"                        "PctEmpAgriculture"                 
+[51] "PctEmpServices"                     "PopDensity2010"                    
+[53] "Age65AndOlderPct2010"               "TotalPop25Plus"                    
+[55] "Ed4AssocDegreePct"                  "ForeignBornPct"                    
+[57] "NetMigrationRate1019"               "WhiteNonHispanicPct2010"           
+[59] "Type_2015_Update"                   "Retirement_Destination_2015_Update"
+
+
+```{r lasso}
+# Step 1: Prepare design matrix
+X <- model.matrix(log_death_rate ~. - FIPS, covid_data)[,-1] # take the first column's of 1 out
+Y <- covid_data$log_death_rate # extract Y
+
+# Step 2: Find X's output from LASSO with min cross-validation error
+set.seed(1)
+state_ind <- c(rep(0, 48), rep(1, ncol(X)-48))
+
+fit <- cv.glmnet(X, Y, nfolds = 12, alpha = 1, penalty.factor = state_ind)
+```
+
+
+```{r lasso.1se}
+# get coef of lambda.1se
+coef.min <- coef(fit, s="lambda.1se")
+coef.min <- coef.min[which(coef.min !=0),][-1]
+var.min <- rownames(as.matrix(coef.min))
+var.min
+```
+
+
+**ii.** Is `lambda.1se` a reasonable choice to have a small testing error? Use the LASSO plot to support your statement.
+
+```{r lasso plot}
+plot(fit)
+```
+
+
+**iii.** Start with the set of variables obtained from your LASSO output, 
+Perform backward elimination until all variables are significant at 0.01 level as the final set of variables. Always keep `State` in the model. Show the backward selection procedure and report the final set of variables.
+
+```{r backwards selection}
+
+# Hint
+# Use Anova() to see the summary without states being broken out
+
+state_ind <- grepl("State", var.min)
+
+# get a sub data frame for OLS
+data_lasso_sub <- covid_data %>%
+  select(log_death_rate, State, var.min[!state_ind])
+lm.fit <- lm(log_death_rate~.,data_lasso_sub)
+Anova(lm.fit)
+
+# Continue backward elimination until all non-State variables are
+# significant at 0.01 level.
+```
+
+
+
+
+**iv.** Run a final model `fit.final` of `log_death_rate` vs the set of variables from backward elimination* *(Q4.iii)*. Also include `WhiteNonHispanicPct2010` regardless it is chosen or not. Report the summary of `fit.final`.
+
+```{r final fit}
+# Run the final model
+  fit.final <- lm(log_death_rate ~ State + PctEmpAgriculture + PctEmpServices +
+      Age65AndOlderPct2010 + TotalPop25Plus + Ed4AssocDegreePct +
+      ForeignBornPct + NetMigrationRate1019 + WhiteNonHispanicPct2010 +
+      Type_2015_Update, data = covid_data)
+  summary(fit.final)
+```
+
+
+**v.** Is `WhiteNonHispanicPct2010` significant at .01 level controlling for all other variables in `fit.final`? 
+
+**Answer**: Yes, it is significant as it's p value is much smaller controlling for all other variables. 
+
+**vi.** Is State significant at .01 level? Controlling for all other variables which state has the highest mean log death rate? 
+
+**Answer**: State is significant at the 0.01 level as it has a p value that is very small. New Jersey has the highest mean log_death_rate as it has the largest coefficient of 1.088.
+
+**vii.** Are the linear model assumptions reasonably met in `fit.final`? Provide residual and normal plots for `fit.final` and summarize your model diagnoses. (No more than 3 sentences).
+
+```{r model assumptions}
+plot(fit.final)
+```
+
+**Answer**: Counties with a higher proportion of white non-Hispanic residents have significantly lower COVID death rates, as WhiteNonHispanicPct2010 has a coefficient of -0.0183 in fit.final (p < 2.2e-16), indicating that minority         communities experienced higher COVID mortality.
+
+# Summary
+
+Write a brief summary about your findings. In particular, address the questions such as what is the effect of `WhiteNonHispanicPct2010` on `log_death_rate`? Are mean log death rates same among states? 
+
+# Optional
+
+Based on `fit.final`, write down the **prediction equation** for a county with the following characteristics:
+
+- State: NJ
+- PctEmpAgriculture: 1.2
+- PctEmpServices: 48.5
+- PctEmpFIRE: 11.3
+- PctEmpTrans: 7.97 
+- PctEmpMining: 0.0114
+- PopDensity2010: 13731
+- TotalPopEst2019: 672391
+- ForeignBornPct: 42.77
+- Age65AndOlderPct2010: 10.4
+- WhiteNonHispanicPct2010: 30.8
+- UrbanInfluenceCode2013: 1
+- HiCreativeClass2000: 1
+- Deep_Pov_All: 7.15
+- NetMigrationRate1019: -3.255
+- TotalPop25Plus: 91.4
+- Ed4AssocDegreePct: 5.6
+- Type_2015_Update: 5
+
+
+
+# Appendix {-}
+
+## Data Summary {-}
+
+The data comes from several different sources: 
+
+1. [County-level infection and fatality data](https://github.com/nytimes/covid-19-data) - This dataset gives daily cumulative numbers on infection and fatality for each county. 
+* [NYC data](https://github.com/nychealth/coronavirus-data)
+2. [County-level socioeconomic data](https://www.ers.usda.gov/data-products/atlas-of-rural-and-small-town-america/download-the-data/) - The following are the four relevant datasets from this site.   
+i. Income - Poverty level and household income. 
+ii. Jobs - Employment type, rate, and change.
+iii. People - Population size, density, education level, race, age, household size, and migration rates.
+iv. County Classifications - Type of county (rural or urban on a rural-urban continuum scale).
+
+
+## Data process to create `covid_data.csv`
+
+
+
+```{r data prep, eval=F, include=FALSE}
+# This is how we created the covid_data.csv
+# DO NOT RUN this chunk                                             DO NOT RUN this chunk
+
+# county-level socialeconomic information
+county_data <- fread("data/covid_county.csv") 
+# county-level COVID case and death
+covid_rate <- fread("data/covid_rates.csv")
+
+covid_county_temp <- covid_rate %>% 
+  filter(date == "2020-09-01") %>% 
+  mutate(log_death_rate = log( (cum_deaths+1)/(TotalPopEst2019+2) )) %>%
+  select(FIPS, cum_deaths, log_death_rate)
+
+# join with county-level demographic data
+covid_county_temp <- 
+  left_join(covid_county_temp,
+            county_data, 
+            by = "FIPS") %>% 
+  drop_na()
+
+# take a subset of the demographic info
+covid_county_sub <- covid_county_temp %>%
+  select(FIPS, log_death_rate, State, Deep_Pov_All, PovertyAllAgesPct, PerCapitaInc, UnempRate2019, PctEmpFIRE, PctEmpConstruction, PctEmpTrans, PctEmpMining, PctEmpTrade, PctEmpInformation, PctEmpAgriculture, PctEmpManufacturing, PctEmpServices, PopDensity2010, OwnHomePct, Age65AndOlderPct2010, TotalPop25Plus, Under18Pct2010, Ed2HSDiplomaOnlyPct, Ed3SomeCollegePct, Ed4AssocDegreePct, Ed5CollegePlusPct, ForeignBornPct, Net_International_Migration_Rate_2010_2019, NetMigrationRate1019, NaturalChangeRate1019, TotalPopEst2019, WhiteNonHispanicPct2010, Type_2015_Update, RuralUrbanContinuumCode2013, UrbanInfluenceCode2013, Perpov_1980_0711, HiCreativeClass2000, HiAmenity, Retirement_Destination_2015_Update)
+
+# output
+# fwrite(covid_county_sub, "data/covid_data.csv")
+```
