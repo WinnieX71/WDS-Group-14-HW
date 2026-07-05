@@ -1,0 +1,460 @@
+---
+title: "Final Project"
+author:
+- Winnie
+- June
+- Helen
+- Akshaj
+- Lilly
+output:
+  html_document:
+    code_folding: show
+    highlight: haddock
+    number_sections: yes
+    theme: lumen
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+  pdf_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: '4'
+  word_document:
+    toc: yes
+    toc_depth: '4'
+urlcolor: blue
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.width=8, fig.height=5, warning=FALSE, message=FALSE)
+options(scipen = 0, digits = 3)
+```
+
+
+```{r load-packages}
+# Load packages
+if(!require('pacman')) install.packages('pacman')
+pacman::p_load(tidyverse, readxl, skimr, corrplot, GGally, gridExtra, rpart, rpart.plot, caret)
+```
+
+
+**1. Goal of study**. Restate the goal of study and importance of your project. 
+
+The goal of our project is to analyze the predictors that lead to greater poverty rates. Our project’s model is based on the idea that factors such as Education costs, per capita personal income, population density, unemployment rate and more, determine poverty. Our regression model, along with our analysis, should give the class and our team members a much greater understanding of what factors impact the different communities around the world which suffer from substantial impoverished conditions, ultimately leading us to draw conclusions based upon our findings. 
+
+
+**2. Data:**
+
+i) What is your data source?
+
+Our data sources are from US department of Labor, US Bureau of Labor Statistics, US Census Bureau, and other official government sources.
+
+ii) Describe how you acquire the data. (You can provide another set of code).
+
+We manually downloaded datasources to assemble a singular dataset for my needs.
+
+iii) Describe how you clean the data (e.g. missing value, errors, outliners).
+
+We didn't have much to do with cleaning the data as we used a standardized government format/official format to collect our data, so there were wasn't much to clean.
+
+iv) Is your data representative enough for your goal of study? Could there be any bias? How will you address the bias if any?
+
+Yes, our data is representative enough due to the wide range of data that we are using in our study. However, aas all of these data sources are from the US government, there might be some bias when it comes to our data.
+
+
+**3. EDA**
+
+As the first step of our analysis, we need to make sense out of the data by EDA. 
+Please provide a complete EDA of your data using relevant plots (with title, labels, colors, legends) and descriptions.
+What have you found so far? 
+
+
+# Research Question
+
+
+**What state-level variables most strongly predict higher poverty rates across the United States?**
+
+
+- Unit of analysis: 50 U.S. states
+- Time period: 2023
+- Outcome: Poverty rate (%)
+- Predictors: Economic, social, and policy variables
+
+
+---
+
+
+# Load Data
+
+
+```{r load-data}
+library(dplyr)
+
+# Load your cleaned dataset
+# Update the file path to match your data location
+state_data <- read.csv("/Users/winniex/Desktop/WDS/Project/dataset - Sheet1 (2).csv", sep=",", header=T, as.is=T)
+
+
+# Show first few rows
+head(state_data)
+```
+
+
+```{r data-structure}
+# Data structure
+glimpse(state_data)
+```
+
+
+---
+
+
+# Data Quality Check
+```{r}
+str(state_data)
+```
+
+```{r}
+summary(state_data)
+```
+
+```{r data-summary}
+# Summary statistics for all variables
+skim(state_data)
+```
+
+
+```{r missing-values}
+# Check for missing values
+missing_counts <- colSums(is.na(state_data))
+missing_counts[missing_counts > 0]
+```
+
+
+```{r basic-stats}
+# Basic dataset info
+cat("Number of states:", nrow(state_data), "\n")
+cat("Number of variables:", ncol(state_data), "\n")
+```
+
+```{r}
+state_data <- state_data %>%
+  rename("state"="State")
+
+```
+
+---
+
+
+# Outcome Variable: Poverty Rate
+
+
+```{r poverty-summary}
+# Summary statistics
+summary(state_data$Poverty_Percentage)
+```
+
+
+```{r poverty-distribution}
+# Histogram
+ggplot(state_data, aes(x = poverty)) +
+ geom_histogram(bins = 10, fill = "steelblue", alpha = 0.7) +
+ geom_vline(xintercept = mean(state_data$poverty),
+            color = "red", linetype = "dashed", size = 1) +
+ labs(title = "Distribution of Poverty Rates Across States",
+      subtitle = "Red line = mean",
+      x = "Poverty Rate (%)",
+      y = "Count") +
+ theme_minimal()
+```
+
+```{r}
+library(usmap)
+#names(data.s)  # hist(data.s$crime.rate)
+#levels(data.s$state)
+
+stat.poverty.plot <- plot_usmap(regions = "state",                   
+                              #regions = "counties", for county level summary
+    data = state_data, 
+    values = "poverty", color = "black") + 
+    labs(title = "State Crime Rate", subtitle = "Continental US States") +
+    theme(legend.position = "right")
+
+stat.poverty.plot
+```
+
+---
+
+# Correlation Analysis
+
+```{r}
+# Select only numeric variables
+numeric_vars <- state_data %>%
+ select(where(is.numeric)) 
+
+
+# Calculate correlation matrix
+cor_matrix <- cor(numeric_vars, use = "complete.obs")
+
+
+# Visualize correlation matrix
+corrplot(cor_matrix,
+        method = "color",
+        type = "upper",
+        tl.col = "black",
+        title = "Correlation Matrix")
+```
+
+```{r}
+# Extract correlations with poverty rate
+cor_with_poverty <- cor_matrix["poverty", ] %>%
+ sort(decreasing = TRUE)
+
+
+# Display all correlations with poverty
+cat("Correlations with poverty rate (sorted):\n")
+print(round(cor_with_poverty, 3))
+```
+
+
+
+```{r correlation-table}
+# Top 10 correlations (absolute value)
+top_cors <- data.frame(
+ Variable = names(cor_with_poverty)[-1],  # exclude poverty itself
+ Correlation = cor_with_poverty[-1]
+) %>%
+ arrange(desc(abs(Correlation))) %>%
+ slice(1:10)
+
+
+cat("\nTop 10 predictors by absolute correlation:\n")
+print(top_cors)
+```
+
+---
+
+# Scatterplots: Top Predictors
+
+
+```{r identify-top-predictors}
+# Get top 4 predictors (by absolute correlation)
+top_4_vars <- top_cors %>%
+ slice(1:4) %>%
+ pull(Variable)
+
+
+cat("Top 4 predictors:\n")
+print(top_4_vars)
+```
+
+
+```{r scatterplots}
+# Create scatterplots for top 4 predictors
+plot_list <- lapply(top_4_vars, function(var) {
+ ggplot(state_data, aes_string(x = var, y = "poverty")) +
+   geom_point(color = "steelblue", size = 2.5, alpha = 0.6) +
+   geom_smooth(method = "lm", se = TRUE, color = "red", size = 1) +
+   labs(title = paste("Poverty vs", var),
+        x = var,
+        y = "Poverty Rate (%)") +
+   theme_minimal()
+})
+
+
+# Display in grid
+grid.arrange(grobs = plot_list, ncol = 2)
+```
+
+
+---
+
+
+# Pairs Plot
+
+
+```{r pairs-plot}
+# Select poverty rate + top 4 predictors
+pairs_data <- state_data %>%
+ select(poverty, all_of(top_4_vars))
+
+
+# Create pairs plot
+ggpairs(pairs_data,
+       title = "Pairs Plot: Poverty Rate and Top 4 Predictors",
+       lower = list(continuous = "smooth"),
+       upper = list(continuous = "cor"))
+```
+
+
+---
+
+
+# Distribution of Key Predictors
+
+
+```{r predictor-distributions}
+state_data <- state_data %>%
+  mutate()
+
+# Histograms for top 4 predictors
+plot_list_hist <- lapply(top_4_vars, function(var) {
+ ggplot(state_data, aes_string(x = var)) +
+   geom_histogram(bins = 20, fill = "steelblue", alpha = 0.7) +
+   labs(title = var, x = "", y = "Count") +
+   theme_minimal()
+})
+
+
+# Display
+grid.arrange(grobs = plot_list_hist, ncol = 2)
+```
+
+
+---
+
+
+# Summary Statistics
+
+
+```{r summary-stats}
+# Summary for poverty rate and top predictors
+summary_vars <- state_data %>%
+ select(poverty, all_of(top_4_vars))
+
+
+cat("Summary statistics for key variables:\n")
+summary(summary_vars)
+```
+
+
+```{r correlation-strength}
+# Categorize correlation strength
+top_cors_categorized <- top_cors %>%
+ mutate(
+   Strength = case_when(
+     abs(Correlation) > 0.7 ~ "Strong",
+     abs(Correlation) > 0.4 ~ "Moderate",
+     abs(Correlation) > 0.2 ~ "Weak",
+     TRUE ~ "Very Weak"
+   ),
+   Direction = ifelse(Correlation > 0, "Positive", "Negative")
+ )
+
+
+cat("\nCorrelation strength and direction:\n")
+print(top_cors_categorized)
+```
+
+---
+
+# Key Findings
+
+
+```{r key-findings}
+# Calculate key metrics
+mean_poverty <- mean(state_data$poverty)
+sd_poverty <- sd(state_data$poverty)
+min_poverty <- min(state_data$poverty)
+max_poverty <- max(state_data$poverty)
+
+
+cat("=== KEY FINDINGS ===\n\n")
+cat("Dataset:\n")
+cat("  - States:", nrow(state_data), "\n")
+cat("  - Variables:", ncol(state_data), "\n\n")
+
+
+cat("Poverty Rate:\n")
+cat("  - Mean:", round(mean_poverty, 2), "%\n")
+cat("  - SD:", round(sd_poverty, 2), "%\n")
+cat("  - Range:", round(min_poverty, 2), "% to", round(max_poverty, 2), "%\n\n")
+
+
+cat("Strongest Predictors:\n")
+for(i in 1:4) {
+ cat("  ", i, ".", top_cors_categorized$Variable[i],
+     "(r =", round(top_cors_categorized$Correlation[i], 3), ")\n")
+}
+
+
+cat("\nNext Steps:\n")
+cat("  - Build OLS regression model\n")
+cat("  - Run LASSO feature selection\n")
+cat("  - Check for multicollinearity (VIF)\n")
+cat("  - Consider log transformations for skewed variables\n")
+```
+
+**4. Preliminary analysis**
+
+With all the techniques we have learned so far, let's try to build models for your goal of study. 
+Please summarize what you have learned from the model. Do the results make sense? 
+
+# Linear Regression
+
+```{r}
+fit1 <- lm(poverty ~ .-state, state_data)
+
+summary(fit1)
+```
+
+# Relex LASSO
+
+```{r}
+library(glmnet)
+
+y <- state_data[,31] # extract Y
+x <- model.matrix(poverty~.-state, data=state_data)
+
+set.seed(10)
+
+lasso_cv <- cv.glmnet(x, y, alpha = 1, nfolds=10)
+
+coef(lasso_cv, s = "lambda.1se")
+```
+
+```{r}
+coef(lasso_cv, s = "lambda.min")
+```
+
+```{r}
+plot(lasso_cv)
+```
+
+```{r}
+library(coefplot)
+
+#lambda.min
+coef.min <- extract.coef(lasso_cv, lambda="lambda.min")
+coef.min
+```
+
+```{r}
+var_min <- rownames(coef.min)[-1]
+min_data <- state_data[, c("poverty", var_min)]
+min_data
+```
+
+```{r}
+#lambda.1se
+coef.1se <- extract.coef(lasso_cv, lambda="lambda.1se")
+coef.1se
+```
+
+```{r}
+var_1se <- rownames(coef.1se)[-1]
+se_data <- state_data[, c("poverty", var_1se)]
+se_data
+```
+
+```{r}
+#min
+fit.min <- lm(poverty ~ ., min_data)
+summary(fit.min)
+```
+
+```{r}
+#1se
+fit.1se <- lm(poverty ~ ., se_data)
+summary(fit.1se)
+```
