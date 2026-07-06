@@ -1,0 +1,428 @@
+---
+title: "Group Homework: CIFAR-10 Classical NN vs CNN"
+author:
+- Group Member 1
+- Group Member 2
+- Group Member 3
+- Group Member 4
+- Group Member 5
+date: 07/06/2026
+output:
+  html_document:
+    code_folding: show
+    highlight: haddock
+    number_sections: yes
+    theme: lumen
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+  pdf_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: '4'
+  word_document:
+    toc: yes
+    toc_depth: '4'
+urlcolor: blue
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  cache = FALSE,
+  fig.height = 4,
+  fig.width = 7,
+  fig.align = "center",
+  warning = FALSE,
+  message = FALSE
+)
+options(scipen = 0, digits = 3)
+
+if (requireNamespace("reticulate", quietly = TRUE)) {
+  env_path <- file.path(getwd(), ".venv-r-tensorflow")
+  if (dir.exists(env_path)) {
+    reticulate::use_virtualenv(env_path, required = TRUE)
+  }
+}
+```
+
+# Submission Options
+
+You may complete this homework in either format:
+
+1. **RMarkdown/RStudio version:** submit the knitted HTML or PDF.
+2. **Google Colab version:** submit the completed `.ipynb` file and Colab link in the comment section of the submission.
+
+Work as a group. Every group member should understand the model choices and be able to explain the performance comparison.
+
+# Goals
+
+In this homework, you will compare two models on the same CIFAR-10 train/test split:
+
+- a **classical neural network** that flattens each image into a vector,
+- a **convolutional neural network** that keeps the image shape and uses convolution/pooling layers.
+
+The main final task is to compare their performance on held-out test images.
+
+# Environment Check
+
+Run this setup if you are working locally. If it fails, use Colab.
+
+```{r install-packages, eval=FALSE}
+if (!requireNamespace("pacman", quietly = TRUE)) {
+  install.packages("pacman")
+}
+
+pacman::p_load(reticulate, keras3, tensorflow, tidyverse)
+
+# If Python/TensorFlow is not already configured, ask an instructor for help
+# or use the Colab version.
+```
+
+```{r load-packages, eval=FALSE}
+pacman::p_load(reticulate, keras3, tensorflow, tidyverse)
+```
+
+**i. Are you completing this homework in local RStudio or Google Colab? Did Keras/TensorFlow load successfully?**
+
+**Answer:** RSTUDIO, keras and tensorflow loaded successfully. 
+
+
+# Part 1: Load And Prepare CIFAR-10
+
+CIFAR-10 contains 60,000 color images from 10 classes. Each image is `32 x 32` pixels with 3 color channels: red, green, and blue.
+
+```{r class-names}
+class_names <- c(
+  "airplane", "automobile", "bird", "cat", "deer",
+  "dog", "frog", "horse", "ship", "truck"
+)
+
+class_names
+```
+
+The code below loads a local `.rds` copy of the full CIFAR-10 dataset. The official CIFAR-10 split has 50,000 training images and 10,000 held-out test images.
+
+```{r load-cifar, eval=FALSE}
+cifar <- readRDS("data/cifar10_full.rds")
+
+train_images_raw <- cifar$train$x
+train_labels_raw <- as.integer(cifar$train$y)
+test_images_raw <- cifar$test$x
+test_labels_raw <- as.integer(cifar$test$y)
+
+if (!is.null(cifar$class_names)) {
+  class_names <- cifar$class_names
+}
+
+dim(train_images_raw)
+dim(test_images_raw)
+```
+
+Both models must use the full official train/test split.
+
+```{r prepare-full-data, eval=FALSE}
+train_images <- train_images_raw
+train_labels <- train_labels_raw
+
+test_images <- test_images_raw
+test_labels <- test_labels_raw
+
+n_train <- dim(train_images)[1]
+n_test <- dim(test_images)[1]
+
+dim(train_images)
+dim(test_images)
+table(train_labels)
+table(test_labels)
+```
+
+The pixel values start between 0 and 255. Neural networks usually train better when inputs are on a smaller scale, so we divide by 255.
+
+```{r scale-images, eval=FALSE}
+train_images <- train_images / 255
+test_images <- test_images / 255
+
+range(train_images)
+```
+
+**ii. What are the dimensions of `train_images` and `test_images`? What does each dimension mean?**
+
+**Answer:** 32 * 32 pixel images with 3 color channels. 
+
+
+**iii. Why do we divide the image values by 255?**
+
+**Answer:** Because we want to constrain the values in the range of zero to one, as neural networks train better on smaller scales.
+
+
+Look at a few training images.
+
+```{r plot-cifar, eval=FALSE}
+plot_cifar_images <- function(images, labels, index = 1:16) {
+  old_par <- par(no.readonly = TRUE)
+  on.exit(par(old_par))
+  par(mfrow = c(4, 4), mar = rep(1, 4), oma = rep(0.2, 4))
+
+  for (i in index) {
+    img <- images[i, , , ]
+    plot(as.raster(img))
+    title(class_names[labels[i] + 1])
+  }
+}
+
+plot_cifar_images(train_images, train_labels, index = 1:16)
+```
+
+**iv. Which classes look easiest to recognize? Which classes look hardest? Why?**
+
+**Answer:** Horse and automobile (black)is some of the easiest due to the color contrast between the object and the background. Cat and deer look the hardest to recognize due to the extremely smudged pixel quality, making it harder to extract correlations between pixels. 
+
+
+# Part 2: Prepare Data For The Classical Neural Network
+
+A classical dense neural network expects each input to be a vector. For CIFAR-10, each `32 x 32 x 3` image becomes one vector with `32 * 32 * 3 = 3072` input values.
+
+```{r flatten-images, eval=FALSE}
+train_x_flat <- array_reshape(train_images, c(dim(train_images)[1], 32 * 32 * 3))
+test_x_flat <- array_reshape(test_images, c(dim(test_images)[1], 32 * 32 * 3))
+
+dim(train_x_flat)
+dim(test_x_flat)
+```
+
+**v. What information might be lost or made harder to use when we flatten an image into a vector?**
+
+**Answer:** The spacial relationships between different pixels that can show certain patterns wil be lost when we flatten an image into a vector.
+
+
+# Part 3: Build A Classical Neural Network
+
+Your group gets to choose the architecture for this model. You must use at least one hidden dense layer. You may also use dropout and/or L1/L2 regularization.
+
+Before building the model, record your architecture choices:
+
+**vi. What classical NN architecture did your group choose? Include number of hidden layers, width of each hidden layer, activation functions, dropout rates if any, and regularization if any.**
+
+**Answer:** We chose a CNN. We chose 2 hidden layers with 128 and 64 units, relu activation functions, and 0.25 dropout rate. We decided to do L2 regularization in order to prevent overfitting. 
+
+
+Use the template below. Edit the hidden layers to match your group's plan.
+
+```{r classical-nn-model, eval=FALSE}
+set_random_seed(10)
+
+# You may change these values.
+hidden_units_1 <- 256
+hidden_units_2 <- 128
+dropout_rate <- 0.25
+l1_strength <- 0
+l2_strength <- 0.001
+
+classical_nn <- keras_model_sequential(input_shape = c(32 * 32 * 3)) %>%
+  layer_dense(
+    units = hidden_units_1,
+    activation = "relu",
+    kernel_regularizer = regularizer_l1_l2(l1 = l1_strength, l2 = l2_strength)
+  ) %>%
+  layer_dropout(rate = dropout_rate) %>%
+  layer_dense(
+    units = hidden_units_2,
+    activation = "relu",
+    kernel_regularizer = regularizer_l1_l2(l1 = l1_strength, l2 = l2_strength)
+  ) %>%
+  layer_dropout(rate = dropout_rate) %>%
+  layer_dense(units = 10, activation = "softmax")
+
+classical_nn
+```
+
+Compile and train the classical NN.
+
+```{r train-classical-nn, eval=FALSE}
+classical_nn %>% compile(
+  optimizer = "adam",
+  loss = "sparse_categorical_crossentropy",
+  metrics = "accuracy"
+)
+
+classical_history <- classical_nn %>% fit(
+  x = train_x_flat,
+  y = train_labels,
+  epochs = 10,
+  batch_size = 128,
+  validation_split = 0.2,
+  verbose = 1
+)
+
+plot(classical_history)
+```
+
+Evaluate the classical NN on held-out test data.
+
+```{r evaluate-classical-nn, eval=FALSE}
+classical_eval <- classical_nn %>% evaluate(
+  x = test_x_flat,
+  y = test_labels,
+  verbose = 0
+)
+
+classical_eval
+```
+
+**vii. What were the classical NN's training, validation, and held-out test accuracy? Did it look like the model was overfitting?**
+
+**Answer:** Training: 1.73 loss overall, around 0.3 accuracy, held out test accuracy was around 0.405, model did not look like it was overfitting as the training accuracy was smaller than the validation accuracy. 
+
+
+# Part 4: Build A Convolutional Neural Network
+
+The CNN is mostly set up for you. It keeps the image structure as `32 x 32 x 3`, uses convolutional layers to learn local visual patterns, and uses pooling to reduce image size.
+
+```{r cnn-model, eval=FALSE}
+set_random_seed(10)
+
+cnn <- keras_model_sequential(input_shape = c(32, 32, 3)) %>%
+  layer_conv_2d(filters = 32, kernel_size = c(3, 3), activation = "relu") %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_conv_2d(filters = 64, kernel_size = c(3, 3), activation = "relu") %>%
+  layer_max_pooling_2d(pool_size = c(2, 2)) %>%
+  layer_conv_2d(filters = 64, kernel_size = c(3, 3), activation = "relu") %>%
+  layer_flatten() %>%
+  layer_dense(units = 64, activation = "relu") %>%
+  layer_dense(units = 10, activation = "softmax")
+
+cnn
+```
+
+**viii. Explain why the CNN can use image structure in a way the classical NN cannot.**
+
+**Answer:**
+The CNN uses a filter to take into consideration spacial relationships between different area groupings and maps them onto a new matrix.
+
+Compile and train the CNN.
+
+```{r train-cnn, eval=FALSE}
+cnn %>% compile(
+  optimizer = "adam",
+  loss = "sparse_categorical_crossentropy",
+  metrics = "accuracy"
+)
+
+cnn_history <- cnn %>% fit(
+  x = train_images,
+  y = train_labels,
+  epochs = 10,
+  batch_size = 128,
+  validation_split = 0.2,
+  verbose = 1
+)
+
+plot(cnn_history)
+```
+
+Evaluate the CNN on the same held-out test data.
+
+```{r evaluate-cnn, eval=FALSE}
+cnn_eval <- cnn %>% evaluate(
+  x = test_images,
+  y = test_labels,
+  verbose = 0
+)
+
+cnn_eval
+```
+
+**ix. What were the CNN's training, validation, and held-out test accuracy? Did it look like the model was overfitting?**
+
+**Answer:** Training: 0.3010 training accuracy, and 0.666 held out test accuracy with 0.979 loss. The model did not look like it was overfitting, as the training accuracy was lower than the validated accuracy. 
+
+
+# Part 5: Compare Held-Out Performance
+
+Both models used:
+
+- the full official CIFAR-10 training split,
+- the full official CIFAR-10 held-out test split,
+- the same 10 CIFAR-10 classes,
+- the same number of epochs, unless your instructor approved a change.
+
+Create a small table comparing held-out performance.
+
+```{r compare-results, eval=FALSE}
+comparison <- tibble(
+  model = c("Classical NN", "CNN"),
+  test_accuracy = c(classical_eval[[1]], cnn_eval[[1]]),
+  test_loss = c(classical_eval[[2]], cnn_eval[[2]])
+)
+
+comparison
+```
+
+Make predictions for the held-out test set.
+
+```{r predictions, eval=FALSE}
+classical_prob <- classical_nn %>% predict(test_x_flat)
+cnn_prob <- cnn %>% predict(test_images)
+
+classical_pred <- classical_prob %>% op_argmax(axis = 2) %>% as.integer() - 1
+cnn_pred <- cnn_prob %>% op_argmax(axis = 2) %>% as.integer() - 1
+
+head(tibble(
+  actual = class_names[test_labels[1:10] + 1],
+  classical_nn = class_names[classical_pred[1:10] + 1],
+  cnn = class_names[cnn_pred[1:10] + 1]
+))
+```
+
+Compare confusion matrices.
+
+```{r confusion-matrices, eval=FALSE}
+classical_confusion <- table(
+  predicted = class_names[classical_pred + 1],
+  actual = class_names[test_labels + 1]
+)
+
+cnn_confusion <- table(
+  predicted = class_names[cnn_pred + 1],
+  actual = class_names[test_labels + 1]
+)
+
+classical_confusion
+cnn_confusion
+```
+
+**x. Which model had better held-out test accuracy? How large was the difference?**
+
+**Answer:** CNN had better held out test accuracy, with around 0.25 more accuracy for CNN. 
+
+
+**xi. Pick two classes from the confusion matrices. Did one model do clearly better for those classes? Explain using evidence.**
+
+**Answer:** 
+Airplane: The CNN predicted 400 more airplane photos accurately.
+Automobile: The CNN predicted 350 more automobile photos accurately.
+
+
+**xii. Find one held-out test image where the classical NN was wrong and the CNN was right, or vice versa. What do you notice about the image?**
+
+```{r inspect-disagreements, eval=FALSE}
+disagreement_index <- which(classical_pred != cnn_pred)
+head(disagreement_index)
+
+i <- disagreement_index[1]
+
+plot(as.raster(test_images[i, , , ]))
+title(paste(
+  "Actual:", class_names[test_labels[i] + 1],
+  "| Classical NN:", class_names[classical_pred[i] + 1],
+  "| CNN:", class_names[cnn_pred[i] + 1]
+))
+```
+
+**Answer:** The image is extremely low quality, with hard to correleate pixels smudged all across the image to the point where human identification was found diffcult, hence making it an anomaly for our data.
+
+
+**END**
