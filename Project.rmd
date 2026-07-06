@@ -34,7 +34,7 @@ options(scipen = 0, digits = 3)
 ```{r load-packages}
 # Load packages
 if(!require('pacman')) install.packages('pacman')
-pacman::p_load(tidyverse, readxl, skimr, corrplot, GGally, gridExtra, rpart, rpart.plot, caret)
+pacman::p_load(tidyverse, readxl, skimr, corrplot, GGally, gridExtra, rpart, rpart.plot, caret, vip, randomForest, e1071)
 ```
 
 
@@ -177,7 +177,7 @@ stat.poverty.plot <- plot_usmap(regions = "state",
                               #regions = "counties", for county level summary
     data = state_data, 
     values = "poverty", color = "black") + 
-    labs(title = "State Crime Rate", subtitle = "Continental US States") +
+    labs(title = "State Poverty Rate", subtitle = "Continental US States") +
     theme(legend.position = "right")
 
 stat.poverty.plot
@@ -458,3 +458,245 @@ summary(fit.min)
 fit.1se <- lm(poverty ~ ., se_data)
 summary(fit.1se)
 ```
+
+# Decision Tree
+
+```{r}
+#install.packages("rpart")
+#install.packages("rpart.plot")
+#install.packages("caret")
+
+#Load Data and Split into Train/Test Sets
+library(rpart)
+library(rpart.plot)
+library(caret)
+
+data(iris)
+set.seed(123)
+train_index <- createDataPartition(state_data$poverty, p = 0.8, list = FALSE)
+train_data <- state_data[train_index, ]
+test_data <- state_data[-train_index, ]
+
+train_data$state <- NULL
+test_data$state  <- NULL
+```
+
+```{r}
+#Train the Model
+tree_model <- rpart(poverty ~ ., 
+                    data = train_data, 
+                    method = "anova",  # for regression
+                    control = rpart.control(minsplit = 10, cp = 0.01))
+```
+
+```{r}
+#Visualize the Tree
+rpart.plot(tree_model, box.palette = "auto", nn = TRUE)
+```
+
+```{r}
+# Make predictions (this part is now correct!)
+predictions <- predict(tree_model, test_data, type = "vector")
+
+# Evaluate Regression performance instead of using a Confusion Matrix
+library(caret)
+
+# 1. Calculate Root Mean Squared Error
+rmse_val <- RMSE(predictions, test_data$poverty)
+cat("RMSE:", rmse_val, "\n")
+
+# 2. Calculate R-squared (variance explained)
+r2_val <- R2(predictions, test_data$poverty)
+cat("R-squared:", r2_val, "\n")
+
+# 3. Calculate Mean Absolute Error
+mae_val <- MAE(predictions, test_data$poverty)
+cat("MAE:", mae_val, "\n")
+```
+
+```{r}
+#Prune the Tree
+printcp(tree_model)  # Identify optimal cp (xerror is minimized)
+optimal_cp <- tree_model$cptable[which.min(tree_model$cptable[, "xerror"]), "CP"]
+pruned_tree <- prune(tree_model, cp = optimal_cp)
+rpart.plot(pruned_tree)
+```
+
+```{r}
+# Tuning Hyperparameters
+control <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
+tuned_tree <- train(poverty ~ ., 
+                    data = state_data, 
+                    method = "rpart",
+                    trControl = control,
+                    tuneGrid = expand.grid(cp = seq(0.01, 0.1, 0.01)))
+print(tuned_tree)
+```
+
+```{r}
+# Original Model
+
+# 1. Extract the feature importance
+# Decision trees store importance directly inside the model object
+tree_importance <- tree_model$variable.importance
+print(tree_importance)
+
+# 2. Convert to a data frame and plot (same logic as before)
+importance_df <- data.frame(
+  Feature = names(tree_importance),
+  Importance = as.numeric(tree_importance)
+)
+
+library(ggplot2)
+ggplot(importance_df, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_bar(stat = "identity", fill = "lightgreen") +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Single Decision Tree Feature Importance")
+```
+
+
+# Random Forest
+
+
+
+```{r}
+#install.packages("randomForest")
+library(randomForest)
+head(state_data)
+```
+
+```{r}
+set.seed(42)
+
+trainIndex <- sample(1:nrow(state_data), 0.8 * nrow(state_data))
+
+trainData <- state_data[trainIndex, ]
+testData <- state_data[-trainIndex, ]
+
+trainData$state <- NULL
+testData$state  <- NULL
+```
+```{r}
+rf_model <- randomForest(poverty ~ ., data = trainData)
+print(rf_model)
+```
+
+```{r}
+predictions <- predict(rf_model, testData)
+MAE(predictions, testData$poverty)
+
+rf_tuned <- randomForest(poverty ~ ., data = trainData, ntree = 500, mtry = 10)
+print(rf_tuned)
+```
+
+```{r}
+importance(rf_model)
+varImpPlot(rf_model)
+```
+
+```{r}
+# You must set importance = TRUE to calculate the advanced metrics
+rf_model <- randomForest(mpg ~ ., data = mtcars, importance = TRUE)
+
+# Extract the importance scores
+# This is your equivalent to extract.coef()
+importance_scores <- importance(rf_model)
+print(importance_scores)
+
+```
+
+
+# Support Vertor Regression
+
+```{r}
+# Install packages if you haven't already
+#install.packages("e1071")
+
+# Load libraries
+library(e1071)
+```
+
+```{r}
+# Train the SVR model
+svr_model <- svm(poverty ~ ., 
+                 data = trainData, 
+                 type = "eps-regression", 
+                 kernel = "radial",
+                 cost = 10, 
+                 epsilon = 0.1)
+
+# View model summary details
+summary(svr_model)
+```
+
+```{r}
+# Predict on test data
+testData$Predicted_Y <- predict(svr_model, testData)
+
+# Calculate Root Mean Squared Error (RMSE)
+error <- testData$poverty - testData$Predicted_Y
+rmse <- sqrt(mean(error^2))
+
+# Print performance metric
+print(paste("Test RMSE:", round(rmse, 4)))
+```
+
+```{r}
+my_features <- "unemploy_rate"
+
+ggplot(testData) +
+  geom_point(aes(x = .data[[my_features]], y = poverty), color = "red", size = 2) +
+  geom_line(aes(x = .data[[my_features]], y = Predicted_Y), color = "blue", size = 1) +
+  labs(
+    title = "Support Vector Regression (Radial Kernel)",
+    x = my_features,
+    y = "Poverty Rate (%)"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+ggplot(testData, aes(x = Predicted_Y, y = poverty)) +
+  geom_point(color = "red", size = 2.5) +
+  geom_abline(intercept = 0, slope = 1, color = "blue", linetype = "dashed", size = 1) +
+  labs(
+    title = "SVR Model Performance (All Predictors)",
+    subtitle = "Dashed line represents perfect prediction",
+    x = "Predicted Poverty Rate (%)",
+    y = "Actual Poverty Rate (%)"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+# significance of each predictor in the SVR model using permutation importance
+# Install and load the vip package
+if (!requireNamespace("vip", quietly = TRUE)) install.packages("vip")
+library(vip)
+
+# Filter out the prediction column so it doesn't look at its own outputs
+importance_data <- testData[, !names(testData) %in% c("Predicted_Y")]
+
+# Calculate and plot variable importance
+vip(
+  object = svr_model, 
+  method = "permute", 
+  target = "poverty", 
+  metric = "rmse",
+  pred_wrapper = predict, 
+  train = importance_data,
+  geom = "col",
+  aesthetics = list(fill = "steelblue")
+) +
+  labs(
+    title = "SVR Feature Importance (Permutation)",
+    subtitle = "Shows how much each feature reduces RMSE when kept intact",
+    x = "Predictors",
+    y = "Importance (Increase in RMSE)"
+  ) +
+  theme_minimal()
+```
+
+
+ 
