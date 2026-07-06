@@ -151,7 +151,7 @@ state_data <- state_data %>%
 
 ```{r poverty-summary}
 # Summary statistics
-summary(state_data$Poverty_Percentage)
+summary(state_data$poverty)
 ```
 
 
@@ -619,12 +619,14 @@ library(e1071)
 
 ```{r}
 # Train the SVR model
+set.seed(1)
+
 svr_model <- svm(poverty ~ ., 
                  data = trainData, 
                  type = "eps-regression", 
                  kernel = "radial",
-                 cost = 10, 
-                 epsilon = 0.1)
+                 cost = 15, 
+                 epsilon = 0.25)
 
 # View model summary details
 summary(svr_model)
@@ -670,6 +672,8 @@ ggplot(testData, aes(x = Predicted_Y, y = poverty)) +
 ```
 
 ```{r}
+set.seed(1)
+
 # significance of each predictor in the SVR model using permutation importance
 # Install and load the vip package
 if (!requireNamespace("vip", quietly = TRUE)) install.packages("vip")
@@ -693,7 +697,7 @@ vip(
     title = "SVR Feature Importance (Permutation)",
     subtitle = "Shows how much each feature reduces RMSE when kept intact",
     x = "Predictors",
-    y = "Importance (Increase in RMSE)"
+    y = "Importance"
   ) +
   theme_minimal()
 ```
