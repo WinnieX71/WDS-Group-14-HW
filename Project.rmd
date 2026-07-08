@@ -703,4 +703,215 @@ vip(
 ```
 
 
+# Comparison Script
+
+```{r}
+rf <- rf_model
+svr <- svr_model
+lasso <- lasso_cv
+ols <- fit1
+dt <- tree_model
+```
+
+
+## Graph 1: Model Performance Comparison
+- **Filename:** `presentation_overview_chart.png`
+- **Type:** Bar chart
+- **Purpose:** Compare RMSE or R² across all 6 models (OLS, LASSO, Decision Tree, Random Forest, SVR, DNN)
+- **Placement:** Right side of executive summary slide
+- **R Code:**
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Create data frame with model results
+model_results <- data.frame(
+  Model = c("OLS", "LASSO", "Decision Tree", "Random Forest", "SVR", "Deep Neural Net"),
+  RMSE = c("0.623", "1.456", "1.67", "1.311", "1.367", ""),  # Insert your actual values
+  R_squared = c("0.931", "0.942", "0.418", "", "", "")  # Insert your actual values
+)
+
+# Bar chart for RMSE
+ggplot(model_results, aes(x = reorder(Model, RMSE), y = RMSE, fill = Model)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Model Performance Comparison",
+       subtitle = "Lower RMSE = Better Performance",
+       x = "Model", y = "Root Mean Squared Error (RMSE)") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+ggsave("output/figures/presentation_overview_chart.png", width = 8, height = 5, dpi = 300)
+```
+
+---
+
+## Section 2: Research Question (1 graph)
+
+### Graph 2: U.S. Poverty Map
+- **Filename:** `us_poverty_map.png`
+- **Type:** Choropleth map
+- **Purpose:** Show geographic distribution of poverty rates by state
+- **Placement:** Bottom of slide
+- **R Code:**
+```r
+library(maps)
+library(viridis)
+library(ggplot2)
+
+# Load state data
+states_map <- map_data("state")
+
+# Merge with your poverty data
+# (Assuming you have a data frame called 'state_data' with columns: state, poverty)
+state_data$region <- tolower(state_data$state)
+
+map_data <- states_map %>%
+  left_join(state_data, by = "region")
+
+# Create choropleth
+ggplot(map_data, aes(x = long, y = lat, group = group, fill = poverty)) +
+  geom_polygon(color = "white", size = 0.2) +
+  scale_fill_viridis(option = "plasma", name = "Poverty Rate (%)") +
+  coord_map("albers", lat0 = 39, lat1 = 45) +
+  labs(title = "State Poverty Rates Across the United States (2023)") +
+  theme_void() +
+  theme(legend.position = "right")
+
+ggsave("output/figures/us_poverty_map.png", width = 10, height = 6, dpi = 300)
+```
+
+---
+
+## Section 3: Data Sources (1 graph)
+
+### Graph 3: Variable Categories Pie Chart
+- **Filename:** `variable_categories_pie.png`
+- **Type:** Pie/donut chart
+- **Purpose:** Show distribution of 30 variables by category
+- **Placement:** Right side of slide
+- **R Code:**
+```r
+# Create category counts
+categories <- data.frame(
+  Category = c("Demographic", "Economic", "Policy", "Education", "Social", "Infrastructure"),
+  Count = c(11, 11, 3, 2, 2, 1)
+)
+
+ggplot(categories, aes(x = "", y = Count, fill = Category)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  labs(title = "Distribution of Predictor Variables by Category",
+       subtitle = "Total: 30 predictors") +
+  theme_void() +
+  scale_fill_brewer(palette = "Set3")
+
+ggsave("output/figures/variable_categories_pie.png", width = 6, height = 6, dpi = 300)
+```
+
+---
+
+## Section 4: Dataset Overview (1 graph/table)
+
+### Graph 4: Summary Statistics Table
+- **Filename:** `summary_statistics_table.png`
+- **Type:** Formatted table
+- **Purpose:** Show descriptive statistics for key variables
+- **Placement:** Center of slide
+- **R Code:**
+```r
+library(knitr)
+library(kableExtra)
+
+# Create summary statistics
+summary_stats <- data %>%
+  select(poverty, log_income, unemploy_rate, crime) %>%
+  summarise(across(everything(),
+                   list(Mean = mean,
+                        Median = median,
+                        SD = sd,
+                        Min = min,
+                        Max = max))) %>%
+  pivot_longer(everything(),
+               names_to = c("Variable", "Statistic"),
+               names_sep = "_") %>%
+  pivot_wider(names_from = Statistic, values_from = value)
+
+# Create formatted table
+kable(summary_stats, format = "html", digits = 2,
+      caption = "Summary Statistics for Key Variables") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed")) %>%
+  save_kable("output/figures/summary_statistics_table.png")
+```
+
+---
+
+## Section 5: EDA - Distribution Analysis (3 graphs)
+
+### Graph 5: Poverty Distribution Histogram
+- **Filename:** `poverty_distribution_histogram.png`
+- **Type:** Histogram with normal curve overlay
+- **Purpose:** Show distribution of outcome variable
+- **Placement:** Left side of slide
+- **R Code:**
+```r
+ggplot(data, aes(x = poverty)) +
+  geom_histogram(aes(y = ..density..), bins = 15, fill = "steelblue", alpha = 0.7) +
+  stat_function(fun = dnorm,
+                args = list(mean = mean(data$poverty), sd = sd(data$poverty)),
+                color = "red", size = 1) +
+  labs(title = "Distribution of State Poverty Rates",
+       x = "Poverty Rate (%)", y = "Density") +
+  theme_minimal()
+
+ggsave("output/figures/poverty_distribution_histogram.png", width = 6, height = 4, dpi = 300)
+```
+
+### Graph 6: Poverty Boxplot
+- **Filename:** `poverty_boxplot.png`
+- **Type:** Boxplot
+- **Purpose:** Show quartiles and outliers
+- **Placement:** Right side of slide
+- **R Code:**
+```r
+ggplot(data, aes(y = poverty, x = "")) +
+  geom_boxplot(fill = "lightblue", outlier.color = "red", outlier.size = 3) +
+  coord_flip() +
+  labs(title = "Poverty Rate Distribution",
+       subtitle = "Boxplot showing quartiles and outliers",
+       y = "Poverty Rate (%)", x = "") +
+  theme_minimal() +
+  theme(axis.text.y = element_blank())
+
+ggsave("output/figures/poverty_boxplot.png", width = 6, height = 3, dpi = 300)
+```
+
+### Graph 7: Predictor Distributions Grid
+- **Filename:** `predictor_distributions_grid.png`
+- **Type:** Faceted histograms (small multiples)
+- **Purpose:** Show distribution of all 30 predictors
+- **Placement:** Full slide (may need 2 slides)
+- **R Code:**
+```r
+# Reshape data to long format
+data_long <- data %>%
+  select(-state) %>%  # Remove state names
+  pivot_longer(everything(), names_to = "variable", values_to = "value")
+
+# Create faceted histograms
+ggplot(data_long, aes(x = value)) +
+  geom_histogram(bins = 10, fill = "steelblue", alpha = 0.7) +
+  facet_wrap(~ variable, scales = "free", ncol = 5) +
+  labs(title = "Distribution of All Predictor Variables",
+       x = "Value", y = "Count") +
+  theme_minimal() +
+  theme(strip.text = element_text(size = 8))
+
+ggsave("output/figures/predictor_distributions_grid.png", width = 15, height = 10, dpi = 300)
+```
+
+
+
+
+
  
