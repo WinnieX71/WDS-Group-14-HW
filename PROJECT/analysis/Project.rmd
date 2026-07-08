@@ -1,0 +1,1588 @@
+---
+title: "Final Project"
+author:
+- Winnie
+- June
+- Helen
+- Akshaj
+- Lilly
+output:
+  html_document:
+    code_folding: show
+    highlight: haddock
+    number_sections: yes
+    theme: lumen
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+  pdf_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: '4'
+  word_document:
+    toc: yes
+    toc_depth: '4'
+urlcolor: blue
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.width=8, fig.height=5, warning=FALSE, message=FALSE)
+options(scipen = 0, digits = 3)
+```
+
+
+```{r load-packages}
+# Load packages
+if(!require('pacman')) install.packages('pacman')
+pacman::p_load(tidyverse, readxl, skimr, corrplot, GGally, gridExtra, rpart, rpart.plot, caret, vip, randomForest, e1071)
+```
+
+
+**1. Goal of study**. Restate the goal of study and importance of your project. 
+
+The goal of our project is to analyze the predictors that lead to greater poverty rates. Our project’s model is based on the idea that factors such as Education costs, per capita personal income, population density, unemployment rate and more, determine poverty. Our regression model, along with our analysis, should give the class and our team members a much greater understanding of what factors impact the different communities around the world which suffer from substantial impoverished conditions, ultimately leading us to draw conclusions based upon our findings. 
+
+
+**2. Data:**
+
+i) What is your data source?
+
+Our data sources are from US department of Labor, US Bureau of Labor Statistics, US Census Bureau, and other official government sources.
+
+ii) Describe how you acquire the data. (You can provide another set of code).
+
+We manually downloaded datasources to assemble a singular dataset for my needs.
+
+iii) Describe how you clean the data (e.g. missing value, errors, outliners).
+
+We didn't have much to do with cleaning the data as we used a standardized government format/official format to collect our data, so there were wasn't much to clean.
+
+iv) Is your data representative enough for your goal of study? Could there be any bias? How will you address the bias if any?
+
+Yes, our data is representative enough due to the wide range of data that we are using in our study. However, aas all of these data sources are from the US government, there might be some bias when it comes to our data.
+
+
+**3. EDA**
+
+As the first step of our analysis, we need to make sense out of the data by EDA. 
+Please provide a complete EDA of your data using relevant plots (with title, labels, colors, legends) and descriptions.
+What have you found so far? 
+
+
+# Research Question
+
+
+**What state-level variables most strongly predict higher poverty rates across the United States?**
+
+
+- Unit of analysis: 50 U.S. states
+- Time period: 2023
+- Outcome: Poverty rate (%)
+- Predictors: Economic, social, and policy variables
+
+
+---
+
+
+# Load Data
+
+
+```{r load-data}
+library(dplyr)
+
+# Load your cleaned dataset
+# Update the file path to match your data location
+state_data <- read.csv("/Users/winniex/Desktop/WDS/Project/dataset - Sheet1 (2).csv", sep=",", header=T, as.is=T)
+
+
+# Show first few rows
+head(state_data)
+```
+
+
+```{r data-structure}
+# Data structure
+glimpse(state_data)
+```
+
+
+---
+
+
+# Data Quality Check
+```{r}
+str(state_data)
+```
+
+```{r}
+summary(state_data)
+```
+
+```{r data-summary}
+# Summary statistics for all variables
+skim(state_data)
+```
+
+
+```{r missing-values}
+# Check for missing values
+missing_counts <- colSums(is.na(state_data))
+missing_counts[missing_counts > 0]
+```
+
+
+```{r basic-stats}
+# Basic dataset info
+cat("Number of states:", nrow(state_data), "\n")
+cat("Number of variables:", ncol(state_data), "\n")
+```
+
+```{r}
+state_data <- state_data %>%
+  rename("state"="State")
+
+```
+
+---
+
+
+# Outcome Variable: Poverty Rate
+
+
+```{r poverty-summary}
+# Summary statistics
+summary(state_data$poverty)
+```
+
+
+```{r poverty-distribution}
+# Histogram
+ggplot(state_data, aes(x = poverty)) +
+ geom_histogram(bins = 10, fill = "steelblue", alpha = 0.7) +
+ geom_vline(xintercept = mean(state_data$poverty),
+            color = "red", linetype = "dashed", size = 1) +
+ labs(title = "Distribution of Poverty Rates Across States",
+      subtitle = "Red line = mean",
+      x = "Poverty Rate (%)",
+      y = "Count") +
+ theme_minimal()
+```
+
+```{r}
+library(usmap)
+#names(data.s)  # hist(data.s$crime.rate)
+#levels(data.s$state)
+
+stat.poverty.plot <- plot_usmap(regions = "state",                   
+                              #regions = "counties", for county level summary
+    data = state_data, 
+    values = "poverty", color = "black") + 
+    labs(title = "State Poverty Rate", subtitle = "Continental US States") +
+    theme(legend.position = "right")
+
+stat.poverty.plot
+```
+
+---
+
+# Correlation Analysis
+
+```{r}
+# Select only numeric variables
+numeric_vars <- state_data %>%
+ select(where(is.numeric)) 
+
+
+# Calculate correlation matrix
+cor_matrix <- cor(numeric_vars, use = "complete.obs")
+
+
+# Visualize correlation matrix
+corrplot(cor_matrix,
+        method = "color",
+        type = "upper",
+        tl.col = "black",
+        title = "Correlation Matrix")
+```
+
+```{r}
+# Extract correlations with poverty rate
+cor_with_poverty <- cor_matrix["poverty", ] %>%
+ sort(decreasing = TRUE)
+
+
+# Display all correlations with poverty
+cat("Correlations with poverty rate (sorted):\n")
+print(round(cor_with_poverty, 3))
+```
+
+
+
+```{r correlation-table}
+# Top 10 correlations (absolute value)
+top_cors <- data.frame(
+ Variable = names(cor_with_poverty)[-1],  # exclude poverty itself
+ Correlation = cor_with_poverty[-1]
+) %>%
+ arrange(desc(abs(Correlation))) %>%
+ slice(1:10)
+
+
+cat("\nTop 10 predictors by absolute correlation:\n")
+print(top_cors)
+```
+
+---
+
+# Scatterplots: Top Predictors
+
+
+```{r identify-top-predictors}
+# Get top 4 predictors (by absolute correlation)
+top_4_vars <- top_cors %>%
+ slice(1:4) %>%
+ pull(Variable)
+
+
+cat("Top 4 predictors:\n")
+print(top_4_vars)
+```
+
+
+```{r scatterplots}
+# Create scatterplots for top 4 predictors
+plot_list <- lapply(top_4_vars, function(var) {
+ ggplot(state_data, aes_string(x = var, y = "poverty")) +
+   geom_point(color = "steelblue", size = 2.5, alpha = 0.6) +
+   geom_smooth(method = "lm", se = TRUE, color = "red", size = 1) +
+   labs(title = paste("Poverty vs", var),
+        x = var,
+        y = "Poverty Rate (%)") +
+   theme_minimal()
+})
+
+
+# Display in grid
+grid.arrange(grobs = plot_list, ncol = 2)
+```
+
+
+---
+
+
+# Pairs Plot
+
+
+```{r pairs-plot}
+# Select poverty rate + top 4 predictors
+pairs_data <- state_data %>%
+ select(poverty, all_of(top_4_vars))
+
+
+# Create pairs plot
+ggpairs(pairs_data,
+       title = "Pairs Plot: Poverty Rate and Top 4 Predictors",
+       lower = list(continuous = "smooth"),
+       upper = list(continuous = "cor"))
+```
+
+
+---
+
+
+# Distribution of Key Predictors
+
+
+```{r predictor-distributions}
+state_data <- state_data %>%
+  mutate()
+
+# Histograms for top 4 predictors
+plot_list_hist <- lapply(top_4_vars, function(var) {
+ ggplot(state_data, aes_string(x = var)) +
+   geom_histogram(bins = 20, fill = "steelblue", alpha = 0.7) +
+   labs(title = var, x = "", y = "Count") +
+   theme_minimal()
+})
+
+
+# Display
+grid.arrange(grobs = plot_list_hist, ncol = 2)
+```
+
+
+---
+
+
+# Summary Statistics
+
+
+```{r summary-stats}
+# Summary for poverty rate and top predictors
+summary_vars <- state_data %>%
+ select(poverty, all_of(top_4_vars))
+
+
+cat("Summary statistics for key variables:\n")
+summary(summary_vars)
+```
+
+
+```{r correlation-strength}
+# Categorize correlation strength
+top_cors_categorized <- top_cors %>%
+ mutate(
+   Strength = case_when(
+     abs(Correlation) > 0.7 ~ "Strong",
+     abs(Correlation) > 0.4 ~ "Moderate",
+     abs(Correlation) > 0.2 ~ "Weak",
+     TRUE ~ "Very Weak"
+   ),
+   Direction = ifelse(Correlation > 0, "Positive", "Negative")
+ )
+
+
+cat("\nCorrelation strength and direction:\n")
+print(top_cors_categorized)
+```
+
+---
+
+# Key Findings
+
+
+```{r key-findings}
+# Calculate key metrics
+mean_poverty <- mean(state_data$poverty)
+sd_poverty <- sd(state_data$poverty)
+min_poverty <- min(state_data$poverty)
+max_poverty <- max(state_data$poverty)
+
+
+cat("=== KEY FINDINGS ===\n\n")
+cat("Dataset:\n")
+cat("  - States:", nrow(state_data), "\n")
+cat("  - Variables:", ncol(state_data), "\n\n")
+
+
+cat("Poverty Rate:\n")
+cat("  - Mean:", round(mean_poverty, 2), "%\n")
+cat("  - SD:", round(sd_poverty, 2), "%\n")
+cat("  - Range:", round(min_poverty, 2), "% to", round(max_poverty, 2), "%\n\n")
+
+
+cat("Strongest Predictors:\n")
+for(i in 1:4) {
+ cat("  ", i, ".", top_cors_categorized$Variable[i],
+     "(r =", round(top_cors_categorized$Correlation[i], 3), ")\n")
+}
+
+
+cat("\nNext Steps:\n")
+cat("  - Build OLS regression model\n")
+cat("  - Run LASSO feature selection\n")
+cat("  - Check for multicollinearity (VIF)\n")
+cat("  - Consider log transformations for skewed variables\n")
+```
+
+**4. Preliminary analysis**
+
+With all the techniques we have learned so far, let's try to build models for your goal of study. 
+Please summarize what you have learned from the model. Do the results make sense? 
+
+# Linear Regression
+
+```{r}
+fit1 <- lm(poverty ~ .-state, state_data)
+
+summary(fit1)
+```
+
+# Relex LASSO
+
+```{r}
+library(glmnet)
+
+y <- state_data[,31] # extract Y
+x <- model.matrix(poverty~.-state, data=state_data)
+
+set.seed(10)
+
+lasso_cv <- cv.glmnet(x, y, alpha = 1, nfolds=10)
+
+coef(lasso_cv, s = "lambda.1se")
+```
+
+```{r}
+coef(lasso_cv, s = "lambda.min")
+```
+
+```{r}
+plot(lasso_cv)
+```
+
+```{r}
+library(coefplot)
+
+#lambda.min
+coef.min <- extract.coef(lasso_cv, lambda="lambda.min")
+coef.min
+```
+
+```{r}
+var_min <- rownames(coef.min)[-1]
+min_data <- state_data[, c("poverty", var_min)]
+min_data
+```
+
+```{r}
+#lambda.1se
+coef.1se <- extract.coef(lasso_cv, lambda="lambda.1se")
+coef.1se
+```
+
+```{r}
+var_1se <- rownames(coef.1se)[-1]
+se_data <- state_data[, c("poverty", var_1se)]
+se_data
+```
+
+```{r}
+#min
+fit.min <- lm(poverty ~ ., min_data)
+summary(fit.min)
+```
+
+```{r}
+#1se
+fit.1se <- lm(poverty ~ ., se_data)
+summary(fit.1se)
+```
+
+# Decision Tree
+
+```{r}
+#install.packages("rpart")
+#install.packages("rpart.plot")
+#install.packages("caret")
+
+#Load Data and Split into Train/Test Sets
+library(rpart)
+library(rpart.plot)
+library(caret)
+
+data(iris)
+set.seed(123)
+train_index <- createDataPartition(state_data$poverty, p = 0.8, list = FALSE)
+train_data <- state_data[train_index, ]
+test_data <- state_data[-train_index, ]
+
+train_data$state <- NULL
+test_data$state  <- NULL
+```
+
+```{r}
+#Train the Model
+tree_model <- rpart(poverty ~ ., 
+                    data = train_data, 
+                    method = "anova",  # for regression
+                    control = rpart.control(minsplit = 10, cp = 0.01))
+```
+
+```{r}
+#Visualize the Tree
+rpart.plot(tree_model, box.palette = "auto", nn = TRUE)
+```
+
+```{r}
+# Make predictions (this part is now correct!)
+predictions <- predict(tree_model, test_data, type = "vector")
+
+# Evaluate Regression performance instead of using a Confusion Matrix
+library(caret)
+
+# 1. Calculate Root Mean Squared Error
+rmse_val <- RMSE(predictions, test_data$poverty)
+cat("RMSE:", rmse_val, "\n")
+
+# 2. Calculate R-squared (variance explained)
+r2_val <- R2(predictions, test_data$poverty)
+cat("R-squared:", r2_val, "\n")
+
+# 3. Calculate Mean Absolute Error
+mae_val <- MAE(predictions, test_data$poverty)
+cat("MAE:", mae_val, "\n")
+```
+
+```{r}
+#Prune the Tree
+printcp(tree_model)  # Identify optimal cp (xerror is minimized)
+optimal_cp <- tree_model$cptable[which.min(tree_model$cptable[, "xerror"]), "CP"]
+pruned_tree <- prune(tree_model, cp = optimal_cp)
+rpart.plot(pruned_tree)
+```
+
+```{r}
+# Tuning Hyperparameters
+control <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
+tuned_tree <- train(poverty ~ ., 
+                    data = state_data, 
+                    method = "rpart",
+                    trControl = control,
+                    tuneGrid = expand.grid(cp = seq(0.01, 0.1, 0.01)))
+print(tuned_tree)
+```
+
+```{r}
+# Original Model
+
+# 1. Extract the feature importance
+# Decision trees store importance directly inside the model object
+tree_importance <- tree_model$variable.importance
+print(tree_importance)
+
+# 2. Convert to a data frame and plot (same logic as before)
+importance_df <- data.frame(
+  Feature = names(tree_importance),
+  Importance = as.numeric(tree_importance)
+)
+
+library(ggplot2)
+ggplot(importance_df, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_bar(stat = "identity", fill = "lightgreen") +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Single Decision Tree Feature Importance")
+```
+
+
+# Random Forest
+
+
+
+```{r}
+#install.packages("randomForest")
+library(randomForest)
+head(state_data)
+```
+
+```{r}
+set.seed(42)
+
+trainIndex <- sample(1:nrow(state_data), 0.8 * nrow(state_data))
+
+trainData <- state_data[trainIndex, ]
+testData <- state_data[-trainIndex, ]
+
+trainData$state <- NULL
+testData$state  <- NULL
+```
+```{r}
+rf_model <- randomForest(poverty ~ ., data = trainData)
+print(rf_model)
+```
+
+```{r}
+predictions <- predict(rf_model, testData)
+MAE(predictions, testData$poverty)
+
+rf_tuned <- randomForest(poverty ~ ., data = trainData, ntree = 500, mtry = 10)
+print(rf_tuned)
+```
+
+```{r}
+importance(rf_model)
+varImpPlot(rf_model)
+```
+
+```{r}
+# You must set importance = TRUE to calculate the advanced metrics
+rf_model <- randomForest(mpg ~ ., data = mtcars, importance = TRUE)
+
+# Extract the importance scores
+# This is your equivalent to extract.coef()
+importance_scores <- importance(rf_model)
+print(importance_scores)
+
+```
+
+
+# Support Vertor Regression
+
+```{r}
+# Install packages if you haven't already
+#install.packages("e1071")
+
+# Load libraries
+library(e1071)
+```
+
+```{r}
+# Train the SVR model
+set.seed(1)
+
+svr_model <- svm(poverty ~ ., 
+                 data = trainData, 
+                 type = "eps-regression", 
+                 kernel = "radial",
+                 cost = 15, 
+                 epsilon = 0.25)
+
+# View model summary details
+summary(svr_model)
+```
+
+```{r}
+# Predict on test data
+testData$Predicted_Y <- predict(svr_model, testData)
+
+# Calculate Root Mean Squared Error (RMSE)
+error <- testData$poverty - testData$Predicted_Y
+rmse <- sqrt(mean(error^2))
+
+# Print performance metric
+print(paste("Test RMSE:", round(rmse, 4)))
+```
+
+```{r}
+my_features <- "unemploy_rate"
+
+ggplot(testData) +
+  geom_point(aes(x = .data[[my_features]], y = poverty), color = "red", size = 2) +
+  geom_line(aes(x = .data[[my_features]], y = Predicted_Y), color = "blue", size = 1) +
+  labs(
+    title = "Support Vector Regression (Radial Kernel)",
+    x = my_features,
+    y = "Poverty Rate (%)"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+ggplot(testData, aes(x = Predicted_Y, y = poverty)) +
+  geom_point(color = "red", size = 2.5) +
+  geom_abline(intercept = 0, slope = 1, color = "blue", linetype = "dashed", size = 1) +
+  labs(
+    title = "SVR Model Performance (All Predictors)",
+    subtitle = "Dashed line represents perfect prediction",
+    x = "Predicted Poverty Rate (%)",
+    y = "Actual Poverty Rate (%)"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+set.seed(1)
+
+# significance of each predictor in the SVR model using permutation importance
+# Install and load the vip package
+if (!requireNamespace("vip", quietly = TRUE)) install.packages("vip")
+library(vip)
+
+# Filter out the prediction column so it doesn't look at its own outputs
+importance_data <- testData[, !names(testData) %in% c("Predicted_Y")]
+
+# Calculate and plot variable importance
+vip(
+  object = svr_model, 
+  method = "permute", 
+  target = "poverty", 
+  metric = "rmse",
+  pred_wrapper = predict, 
+  train = importance_data,
+  geom = "col",
+  aesthetics = list(fill = "steelblue")
+) +
+  labs(
+    title = "SVR Feature Importance (Permutation)",
+    subtitle = "Shows how much each feature reduces RMSE when kept intact",
+    x = "Predictors",
+    y = "Importance"
+  ) +
+  theme_minimal()
+```
+
+
+# Comparison Script
+
+```{r}
+rf <- rf_model
+svr <- svr_model
+lasso <- lasso_cv
+ols <- fit1
+dt <- tree_model
+```
+
+
+## Graph 1: Model Performance Comparison
+- **Filename:** `presentation_overview_chart.png`
+- **Type:** Bar chart
+- **Purpose:** Compare RMSE or R² across all 6 models (OLS, LASSO, Decision Tree, Random Forest, SVR, DNN)
+- **Placement:** Right side of executive summary slide
+- **R Code:**
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Create data frame with model results
+model_results <- data.frame(
+  Model = c("OLS", "LASSO", "Decision Tree", "Random Forest", "SVR", "Deep Neural Net"),
+  RMSE = c("0.623", "1.456", "1.67", "1.311", "1.367", ""),  # Insert your actual values
+  R_squared = c("0.931", "0.942", "0.418", "", "", "")  # Insert your actual values
+)
+
+# Bar chart for RMSE
+ggplot(model_results, aes(x = reorder(Model, RMSE), y = RMSE, fill = Model)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Model Performance Comparison",
+       subtitle = "Lower RMSE = Better Performance",
+       x = "Model", y = "Root Mean Squared Error (RMSE)") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+ggsave("output/figures/presentation_overview_chart.png", width = 8, height = 5, dpi = 300)
+```
+
+---
+
+## Section 2: Research Question (1 graph)
+
+### Graph 2: U.S. Poverty Map
+- **Filename:** `us_poverty_map.png`
+- **Type:** Choropleth map
+- **Purpose:** Show geographic distribution of poverty rates by state
+- **Placement:** Bottom of slide
+- **R Code:**
+```r
+library(maps)
+library(viridis)
+library(ggplot2)
+
+# Load state data
+states_map <- map_data("state")
+
+# Merge with your poverty data
+# (Assuming you have a data frame called 'state_data' with columns: state, poverty)
+state_data$region <- tolower(state_data$state)
+
+map_data <- states_map %>%
+  left_join(state_data, by = "region")
+
+# Create choropleth
+ggplot(map_data, aes(x = long, y = lat, group = group, fill = poverty)) +
+  geom_polygon(color = "white", size = 0.2) +
+  scale_fill_viridis(option = "plasma", name = "Poverty Rate (%)") +
+  coord_map("albers", lat0 = 39, lat1 = 45) +
+  labs(title = "State Poverty Rates Across the United States (2023)") +
+  theme_void() +
+  theme(legend.position = "right")
+
+ggsave("output/figures/us_poverty_map.png", width = 10, height = 6, dpi = 300)
+```
+
+---
+
+## Section 3: Data Sources (1 graph)
+
+### Graph 3: Variable Categories Pie Chart
+- **Filename:** `variable_categories_pie.png`
+- **Type:** Pie/donut chart
+- **Purpose:** Show distribution of 30 variables by category
+- **Placement:** Right side of slide
+- **R Code:**
+```r
+# Create category counts
+categories <- data.frame(
+  Category = c("Demographic", "Economic", "Policy", "Education", "Social", "Infrastructure"),
+  Count = c(11, 11, 3, 2, 2, 1)
+)
+
+ggplot(categories, aes(x = "", y = Count, fill = Category)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y", start = 0) +
+  labs(title = "Distribution of Predictor Variables by Category",
+       subtitle = "Total: 30 predictors") +
+  theme_void() +
+  scale_fill_brewer(palette = "Set3")
+
+ggsave("output/figures/variable_categories_pie.png", width = 6, height = 6, dpi = 300)
+```
+
+---
+
+## Section 4: Dataset Overview (1 graph/table)
+
+### Graph 4: Summary Statistics Table
+- **Filename:** `summary_statistics_table.png`
+- **Type:** Formatted table
+- **Purpose:** Show descriptive statistics for key variables
+- **Placement:** Center of slide
+- **R Code:**
+```r
+library(knitr)
+library(kableExtra)
+
+# Create summary statistics
+summary_stats <- data %>%
+  select(poverty, log_income, unemploy_rate, crime) %>%
+  summarise(across(everything(),
+                   list(Mean = mean,
+                        Median = median,
+                        SD = sd,
+                        Min = min,
+                        Max = max))) %>%
+  pivot_longer(everything(),
+               names_to = c("Variable", "Statistic"),
+               names_sep = "_") %>%
+  pivot_wider(names_from = Statistic, values_from = value)
+
+# Create formatted table
+kable(summary_stats, format = "html", digits = 2,
+      caption = "Summary Statistics for Key Variables") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed")) %>%
+  save_kable("output/figures/summary_statistics_table.png")
+```
+
+---
+
+## Section 5: EDA - Distribution Analysis (3 graphs)
+
+### Graph 5: Poverty Distribution Histogram
+- **Filename:** `poverty_distribution_histogram.png`
+- **Type:** Histogram with normal curve overlay
+- **Purpose:** Show distribution of outcome variable
+- **Placement:** Left side of slide
+- **R Code:**
+```r
+ggplot(data, aes(x = poverty)) +
+  geom_histogram(aes(y = ..density..), bins = 15, fill = "steelblue", alpha = 0.7) +
+  stat_function(fun = dnorm,
+                args = list(mean = mean(data$poverty), sd = sd(data$poverty)),
+                color = "red", size = 1) +
+  labs(title = "Distribution of State Poverty Rates",
+       x = "Poverty Rate (%)", y = "Density") +
+  theme_minimal()
+
+ggsave("output/figures/poverty_distribution_histogram.png", width = 6, height = 4, dpi = 300)
+```
+
+### Graph 6: Poverty Boxplot
+- **Filename:** `poverty_boxplot.png`
+- **Type:** Boxplot
+- **Purpose:** Show quartiles and outliers
+- **Placement:** Right side of slide
+- **R Code:**
+```r
+ggplot(data, aes(y = poverty, x = "")) +
+  geom_boxplot(fill = "lightblue", outlier.color = "red", outlier.size = 3) +
+  coord_flip() +
+  labs(title = "Poverty Rate Distribution",
+       subtitle = "Boxplot showing quartiles and outliers",
+       y = "Poverty Rate (%)", x = "") +
+  theme_minimal() +
+  theme(axis.text.y = element_blank())
+
+ggsave("output/figures/poverty_boxplot.png", width = 6, height = 3, dpi = 300)
+```
+
+### Graph 7: Predictor Distributions Grid
+- **Filename:** `predictor_distributions_grid.png`
+- **Type:** Faceted histograms (small multiples)
+- **Purpose:** Show distribution of all 30 predictors
+- **Placement:** Full slide (may need 2 slides)
+- **R Code:**
+```r
+# Reshape data to long format
+data_long <- data %>%
+  select(-state) %>%  # Remove state names
+  pivot_longer(everything(), names_to = "variable", values_to = "value")
+
+# Create faceted histograms
+ggplot(data_long, aes(x = value)) +
+  geom_histogram(bins = 10, fill = "steelblue", alpha = 0.7) +
+  facet_wrap(~ variable, scales = "free", ncol = 5) +
+  labs(title = "Distribution of All Predictor Variables",
+       x = "Value", y = "Count") +
+  theme_minimal() +
+  theme(strip.text = element_text(size = 8))
+
+ggsave("output/figures/predictor_distributions_grid.png", width = 15, height = 10, dpi = 300)
+```
+
+
+
+
+
+ 
+
+---
+
+# Cross-Validation & Model Evaluation
+
+This section performs comprehensive cross-validation for all models to ensure robust performance evaluation and prevent overfitting.
+
+## Setup: Train/Test Split & CV Configuration
+
+```{r cv-setup}
+# Set seed for reproducibility
+set.seed(42)
+
+# Create output directories
+dir.create("../output/figures", recursive = TRUE, showWarnings = FALSE)
+dir.create("../output/tables", recursive = TRUE, showWarnings = FALSE)
+
+# Prepare data (remove state names)
+data_for_modeling <- state_data %>% select(-state)
+
+# Create train/test split (80/20)
+train_index <- createDataPartition(data_for_modeling$poverty, p = 0.8, list = FALSE)
+
+train_data_cv <- data_for_modeling[train_index, ]
+test_data_cv <- data_for_modeling[-train_index, ]
+
+# Store test state names for later
+test_states_cv <- state_data$state[-train_index]
+
+cat("Training set:", nrow(train_data_cv), "observations\n")
+cat("Test set:", nrow(test_data_cv), "observations\n")
+
+# Prepare X and y matrices for LASSO/GLMnet
+X_train_cv <- as.matrix(train_data_cv %>% select(-poverty))
+y_train_cv <- train_data_cv$poverty
+
+X_test_cv <- as.matrix(test_data_cv %>% select(-poverty))
+y_test_cv <- test_data_cv$poverty
+
+# Define 5-fold cross-validation control
+cv_control <- trainControl(
+  method = "cv",           # Cross-validation
+  number = 5,              # 5 folds
+  savePredictions = "final",
+  verboseIter = FALSE
+)
+```
+
+---
+
+## Model 1: OLS Regression with Cross-Validation
+
+```{r ols-cv}
+cat("\n========== OLS REGRESSION ==========\n")
+
+# Train OLS with 5-fold CV
+ols_cv <- train(
+  poverty ~ .,
+  data = train_data_cv,
+  method = "lm",
+  trControl = cv_control,
+  metric = "RMSE"
+)
+
+# Extract CV results
+ols_cv_results <- ols_cv$resample
+ols_cv_rmse <- mean(ols_cv_results$RMSE)
+ols_cv_rsq <- mean(ols_cv_results$Rsquared)
+ols_cv_rmse_sd <- sd(ols_cv_results$RMSE)
+
+# Fit final model on full training set
+ols_final <- lm(poverty ~ ., data = train_data_cv)
+
+# Training set predictions
+ols_train_pred <- predict(ols_final, train_data_cv)
+ols_train_rmse <- sqrt(mean((train_data_cv$poverty - ols_train_pred)^2))
+ols_train_rsq <- cor(train_data_cv$poverty, ols_train_pred)^2
+
+# Test set predictions
+ols_test_pred <- predict(ols_final, test_data_cv)
+ols_test_rmse <- sqrt(mean((y_test_cv - ols_test_pred)^2))
+ols_test_rsq <- cor(y_test_cv, ols_test_pred)^2
+ols_test_mae <- mean(abs(y_test_cv - ols_test_pred))
+
+# Display results
+cat("Cross-Validation RMSE:", round(ols_cv_rmse, 3), "±", round(ols_cv_rmse_sd, 3), "\n")
+cat("Train RMSE:", round(ols_train_rmse, 3), "| R²:", round(ols_train_rsq, 3), "\n")
+cat("Test RMSE:", round(ols_test_rmse, 3), "| R²:", round(ols_test_rsq, 3), "\n")
+cat("Test MAE:", round(ols_test_mae, 3), "\n")
+```
+
+### OLS Model Summary
+
+```{r ols-summary}
+summary(ols_final)
+```
+
+---
+
+## Model 2: LASSO with Cross-Validation
+
+```{r lasso-cv}
+cat("\n========== LASSO REGRESSION ==========\n")
+
+# Set up lambda sequence
+lambda_seq <- 10^seq(-2, 2, length = 100)
+
+# Train LASSO with CV
+lasso_cv_model <- train(
+  poverty ~ .,
+  data = train_data_cv,
+  method = "glmnet",
+  trControl = cv_control,
+  tuneGrid = expand.grid(alpha = 1, lambda = lambda_seq),
+  metric = "RMSE"
+)
+
+# Extract CV results for optimal lambda
+lasso_cv_results <- lasso_cv_model$resample %>%
+  filter(lambda == lasso_cv_model$bestTune$lambda)
+lasso_cv_rmse <- mean(lasso_cv_results$RMSE)
+lasso_cv_rsq <- mean(lasso_cv_results$Rsquared)
+lasso_cv_rmse_sd <- sd(lasso_cv_results$RMSE)
+
+# Optimal lambda
+optimal_lambda <- lasso_cv_model$bestTune$lambda
+
+# Fit final LASSO model
+lasso_final <- glmnet(X_train_cv, y_train_cv, alpha = 1, lambda = optimal_lambda)
+
+# Training predictions
+lasso_train_pred <- predict(lasso_final, X_train_cv)[,1]
+lasso_train_rmse <- sqrt(mean((y_train_cv - lasso_train_pred)^2))
+lasso_train_rsq <- cor(y_train_cv, lasso_train_pred)^2
+
+# Test predictions
+lasso_test_pred <- predict(lasso_final, X_test_cv)[,1]
+lasso_test_rmse <- sqrt(mean((y_test_cv - lasso_test_pred)^2))
+lasso_test_rsq <- cor(y_test_cv, lasso_test_pred)^2
+lasso_test_mae <- mean(abs(y_test_cv - lasso_test_pred))
+
+# Count non-zero coefficients
+lasso_coefs <- coef(lasso_final)
+n_features_selected <- sum(lasso_coefs[-1] != 0)
+
+cat("Optimal lambda:", round(optimal_lambda, 4), "\n")
+cat("Features selected:", n_features_selected, "out of", ncol(X_train_cv), "\n")
+cat("CV RMSE:", round(lasso_cv_rmse, 3), "±", round(lasso_cv_rmse_sd, 3), "\n")
+cat("Train RMSE:", round(lasso_train_rmse, 3), "| R²:", round(lasso_train_rsq, 3), "\n")
+cat("Test RMSE:", round(lasso_test_rmse, 3), "| R²:", round(lasso_test_rsq, 3), "\n")
+cat("Test MAE:", round(lasso_test_mae, 3), "\n")
+```
+
+### LASSO Coefficient Path
+
+```{r lasso-path-plot}
+# Plot CV curve
+plot(lasso_cv_model$finalModel, xvar = "lambda", label = TRUE,
+     main = "LASSO Coefficient Paths")
+abline(v = log(optimal_lambda), lty = 2, col = "red")
+```
+
+---
+
+## Model 3: Decision Tree with Cross-Validation
+
+```{r tree-cv}
+cat("\n========== DECISION TREE ==========\n")
+
+# Train Decision Tree with CV
+tree_cv_model <- train(
+  poverty ~ .,
+  data = train_data_cv,
+  method = "rpart",
+  trControl = cv_control,
+  tuneLength = 10,
+  metric = "RMSE"
+)
+
+# Extract CV results
+tree_cv_results <- tree_cv_model$resample
+tree_cv_rmse <- mean(tree_cv_results$RMSE)
+tree_cv_rsq <- mean(tree_cv_results$Rsquared)
+tree_cv_rmse_sd <- sd(tree_cv_results$RMSE)
+
+# Fit final tree
+tree_final <- rpart(poverty ~ ., data = train_data_cv,
+                    cp = tree_cv_model$bestTune$cp)
+
+# Training predictions
+tree_train_pred <- predict(tree_final, train_data_cv)
+tree_train_rmse <- sqrt(mean((y_train_cv - tree_train_pred)^2))
+tree_train_rsq <- cor(y_train_cv, tree_train_pred)^2
+
+# Test predictions
+tree_test_pred <- predict(tree_final, test_data_cv)
+tree_test_rmse <- sqrt(mean((y_test_cv - tree_test_pred)^2))
+tree_test_rsq <- cor(y_test_cv, tree_test_pred)^2
+tree_test_mae <- mean(abs(y_test_cv - tree_test_pred))
+
+cat("Optimal CP:", round(tree_cv_model$bestTune$cp, 4), "\n")
+cat("CV RMSE:", round(tree_cv_rmse, 3), "±", round(tree_cv_rmse_sd, 3), "\n")
+cat("Train RMSE:", round(tree_train_rmse, 3), "| R²:", round(tree_train_rsq, 3), "\n")
+cat("Test RMSE:", round(tree_test_rmse, 3), "| R²:", round(tree_test_rsq, 3), "\n")
+cat("Test MAE:", round(tree_test_mae, 3), "\n")
+```
+
+---
+
+## Model 4: Random Forest with Cross-Validation
+
+```{r rf-cv, cache=TRUE}
+cat("\n========== RANDOM FOREST ==========\n")
+
+# Train Random Forest with CV
+# Note: This may take 1-2 minutes
+rf_cv_model <- train(
+  poverty ~ .,
+  data = train_data_cv,
+  method = "rf",
+  trControl = cv_control,
+  tuneGrid = expand.grid(mtry = c(3, 5, 7, 10)),
+  ntree = 500,
+  importance = TRUE,
+  metric = "RMSE"
+)
+
+# Extract CV results
+rf_cv_results <- rf_cv_model$resample
+rf_cv_rmse <- mean(rf_cv_results$RMSE)
+rf_cv_rsq <- mean(rf_cv_results$Rsquared)
+rf_cv_rmse_sd <- sd(rf_cv_results$RMSE)
+
+# Fit final Random Forest
+rf_final <- randomForest(
+  poverty ~ .,
+  data = train_data_cv,
+  ntree = 500,
+  mtry = rf_cv_model$bestTune$mtry,
+  importance = TRUE
+)
+
+# Training predictions
+rf_train_pred <- predict(rf_final, train_data_cv)
+rf_train_rmse <- sqrt(mean((y_train_cv - rf_train_pred)^2))
+rf_train_rsq <- cor(y_train_cv, rf_train_pred)^2
+
+# Test predictions
+rf_test_pred <- predict(rf_final, test_data_cv)
+rf_test_rmse <- sqrt(mean((y_test_cv - rf_test_pred)^2))
+rf_test_rsq <- cor(y_test_cv, rf_test_pred)^2
+rf_test_mae <- mean(abs(y_test_cv - rf_test_pred))
+
+cat("Optimal mtry:", rf_cv_model$bestTune$mtry, "\n")
+cat("CV RMSE:", round(rf_cv_rmse, 3), "±", round(rf_cv_rmse_sd, 3), "\n")
+cat("Train RMSE:", round(rf_train_rmse, 3), "| R²:", round(rf_train_rsq, 3), "\n")
+cat("Test RMSE:", round(rf_test_rmse, 3), "| R²:", round(rf_test_rsq, 3), "\n")
+cat("Test MAE:", round(rf_test_mae, 3), "\n")
+```
+
+### Random Forest Variable Importance
+
+```{r rf-importance-plot}
+varImpPlot(rf_final, main = "Random Forest: Variable Importance")
+```
+
+---
+
+## Model 5: Support Vector Regression with Cross-Validation
+
+```{r svr-cv}
+cat("\n========== SUPPORT VECTOR REGRESSION ==========\n")
+
+# Train SVR with CV (using radial kernel)
+svr_cv_model <- train(
+  poverty ~ .,
+  data = train_data_cv,
+  method = "svmRadial",
+  trControl = cv_control,
+  tuneLength = 5,
+  metric = "RMSE",
+  preProcess = c("center", "scale")
+)
+
+# Extract CV results
+svr_cv_results <- svr_cv_model$resample
+svr_cv_rmse <- mean(svr_cv_results$RMSE)
+svr_cv_rsq <- mean(svr_cv_results$Rsquared)
+svr_cv_rmse_sd <- sd(svr_cv_results$RMSE)
+
+# Fit final SVR model
+# Scale data for SVR
+train_scaled <- scale(train_data_cv %>% select(-poverty))
+test_scaled <- scale(test_data_cv %>% select(-poverty),
+                     center = attr(train_scaled, "scaled:center"),
+                     scale = attr(train_scaled, "scaled:scale"))
+
+svr_final <- svm(
+  poverty ~ .,
+  data = data.frame(poverty = y_train_cv, train_scaled),
+  kernel = "radial",
+  cost = svr_cv_model$bestTune$C,
+  gamma = svr_cv_model$bestTune$sigma
+)
+
+# Training predictions
+svr_train_pred <- predict(svr_final, data.frame(train_scaled))
+svr_train_rmse <- sqrt(mean((y_train_cv - svr_train_pred)^2))
+svr_train_rsq <- cor(y_train_cv, svr_train_pred)^2
+
+# Test predictions
+svr_test_pred <- predict(svr_final, data.frame(test_scaled))
+svr_test_rmse <- sqrt(mean((y_test_cv - svr_test_pred)^2))
+svr_test_rsq <- cor(y_test_cv, svr_test_pred)^2
+svr_test_mae <- mean(abs(y_test_cv - svr_test_pred))
+
+cat("Optimal C:", round(svr_cv_model$bestTune$C, 4), "\n")
+cat("Optimal sigma:", round(svr_cv_model$bestTune$sigma, 4), "\n")
+cat("CV RMSE:", round(svr_cv_rmse, 3), "±", round(svr_cv_rmse_sd, 3), "\n")
+cat("Train RMSE:", round(svr_train_rmse, 3), "| R²:", round(svr_train_rsq, 3), "\n")
+cat("Test RMSE:", round(svr_test_rmse, 3), "| R²:", round(svr_test_rsq, 3), "\n")
+cat("Test MAE:", round(svr_test_mae, 3), "\n")
+```
+
+---
+
+# Performance Summary & Comparison
+
+## Overall Performance Table
+
+```{r performance-table}
+# Compile all results into one table
+performance_summary <- data.frame(
+  Model = c("OLS Regression", "LASSO", "Decision Tree", "Random Forest", "SVR"),
+
+  # Cross-Validation Results
+  CV_RMSE = c(ols_cv_rmse, lasso_cv_rmse, tree_cv_rmse, rf_cv_rmse, svr_cv_rmse),
+  CV_RMSE_SD = c(ols_cv_rmse_sd, lasso_cv_rmse_sd, tree_cv_rmse_sd,
+                 rf_cv_rmse_sd, svr_cv_rmse_sd),
+  CV_Rsquared = c(ols_cv_rsq, lasso_cv_rsq, tree_cv_rsq, rf_cv_rsq, svr_cv_rsq),
+
+  # Training Set Results
+  Train_RMSE = c(ols_train_rmse, lasso_train_rmse, tree_train_rmse,
+                 rf_train_rmse, svr_train_rmse),
+  Train_Rsquared = c(ols_train_rsq, lasso_train_rsq, tree_train_rsq,
+                     rf_train_rsq, svr_train_rsq),
+
+  # Test Set Results
+  Test_RMSE = c(ols_test_rmse, lasso_test_rmse, tree_test_rmse,
+                rf_test_rmse, svr_test_rmse),
+  Test_Rsquared = c(ols_test_rsq, lasso_test_rsq, tree_test_rsq,
+                    rf_test_rsq, svr_test_rsq),
+  Test_MAE = c(ols_test_mae, lasso_test_mae, tree_test_mae, rf_test_mae, svr_test_mae)
+) %>%
+  mutate(
+    Overfitting = ifelse(Train_RMSE < Test_RMSE - 0.5, "Yes", "No")
+  )
+
+# Display formatted table
+kable(performance_summary %>%
+        mutate(across(where(is.numeric), ~round(., 3))),
+      caption = "Model Performance Summary: Cross-Validation and Test Set Metrics",
+      col.names = c("Model", "CV RMSE", "CV SD", "CV R²",
+                    "Train RMSE", "Train R²", "Test RMSE", "Test R²",
+                    "Test MAE", "Overfitting?")) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                full_width = FALSE) %>%
+  row_spec(which.min(performance_summary$Test_RMSE),
+           bold = TRUE, color = "white", background = "#28a745")
+```
+
+```{r save-performance-table}
+# Save to CSV
+write_csv(performance_summary, "../output/tables/model_performance_summary.csv")
+cat("✓ Table saved to output/tables/model_performance_summary.csv\n")
+```
+
+---
+
+## Best Model Summary
+
+```{r best-model}
+best_idx <- which.min(performance_summary$Test_RMSE)
+
+cat("\n========================================\n")
+cat("BEST MODEL (by Test RMSE)\n")
+cat("========================================\n")
+cat("Model:", performance_summary$Model[best_idx], "\n")
+cat("Test RMSE:", round(performance_summary$Test_RMSE[best_idx], 3), "\n")
+cat("Test R²:", round(performance_summary$Test_Rsquared[best_idx], 3), "\n")
+cat("Test MAE:", round(performance_summary$Test_MAE[best_idx], 3), "\n")
+cat("Overfitting:", performance_summary$Overfitting[best_idx], "\n")
+cat("========================================\n")
+```
+
+---
+
+# Visualization: Model Comparison
+
+## Graph 1: Train vs. Test RMSE Comparison
+
+```{r rmse-comparison-plot, fig.width=10, fig.height=6}
+rmse_comparison <- performance_summary %>%
+  select(Model, Train_RMSE, Test_RMSE) %>%
+  pivot_longer(cols = c(Train_RMSE, Test_RMSE),
+               names_to = "Dataset",
+               values_to = "RMSE") %>%
+  mutate(Dataset = recode(Dataset, "Train_RMSE" = "Train", "Test_RMSE" = "Test"))
+
+ggplot(rmse_comparison, aes(x = Model, y = RMSE, fill = Dataset)) +
+  geom_col(position = "dodge", width = 0.7) +
+  labs(title = "Model Performance: Train vs. Test RMSE",
+       subtitle = "Lower RMSE = Better Performance",
+       x = "Model", y = "Root Mean Squared Error (RMSE)",
+       fill = "Dataset") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(size = 14, face = "bold")) +
+  scale_fill_manual(values = c("Train" = "#4ECDC4", "Test" = "#FF6B6B"))
+
+ggsave("../output/figures/model_comparison_rmse.png", width = 10, height = 6, dpi = 300)
+```
+
+## Graph 2: Test R² Comparison (Lollipop Chart)
+
+```{r r2-comparison-plot, fig.width=8, fig.height=6}
+ggplot(performance_summary, aes(x = reorder(Model, Test_Rsquared), y = Test_Rsquared)) +
+  geom_segment(aes(x = Model, xend = Model, y = 0, yend = Test_Rsquared),
+               size = 1.5, color = "gray50") +
+  geom_point(size = 5, color = "#1E88E5") +
+  coord_flip() +
+  labs(title = "Model Performance: R² Values (Test Set)",
+       subtitle = "Higher R² = Better Fit",
+       x = "Model", y = "R² (Proportion of Variance Explained)") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 14, face = "bold")) +
+  ylim(0, 1) +
+  geom_hline(yintercept = 0.7, linetype = "dashed", color = "red", alpha = 0.5)
+
+ggsave("../output/figures/model_comparison_r2.png", width = 8, height = 6, dpi = 300)
+```
+
+## Graph 3: Cross-Validation Performance (Boxplot)
+
+```{r cv-boxplot, fig.width=10, fig.height=6}
+# Combine CV results from all models
+cv_by_fold <- data.frame(
+  Model = rep(c("OLS", "LASSO", "Tree", "RF", "SVR"), each = 5),
+  Fold = rep(1:5, 5),
+  RMSE = c(
+    ols_cv_results$RMSE,
+    lasso_cv_results$RMSE,
+    tree_cv_results$RMSE,
+    rf_cv_results$RMSE,
+    svr_cv_results$RMSE
+  ),
+  Rsquared = c(
+    ols_cv_results$Rsquared,
+    lasso_cv_results$Rsquared,
+    tree_cv_results$Rsquared,
+    rf_cv_results$Rsquared,
+    svr_cv_results$Rsquared
+  )
+)
+
+ggplot(cv_by_fold, aes(x = reorder(Model, RMSE, FUN = median), y = RMSE, fill = Model)) +
+  geom_boxplot(alpha = 0.7) +
+  geom_jitter(width = 0.15, alpha = 0.4, size = 2) +
+  labs(title = "Cross-Validation Performance (5-Fold CV)",
+       subtitle = "Distribution of RMSE across folds",
+       x = "Model", y = "RMSE") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        plot.title = element_text(size = 14, face = "bold")) +
+  scale_fill_brewer(palette = "Set2")
+
+ggsave("../output/figures/cv_performance_boxplot.png", width = 10, height = 6, dpi = 300)
+```
+
+## Graph 4: Predicted vs. Actual (All Models)
+
+```{r predicted-actual-plot, fig.width=12, fig.height=8}
+pred_vs_actual <- data.frame(
+  Actual = rep(y_test_cv, 5),
+  Predicted = c(ols_test_pred, lasso_test_pred, tree_test_pred,
+                rf_test_pred, svr_test_pred),
+  Model = rep(c("OLS", "LASSO", "Decision Tree", "Random Forest", "SVR"),
+              each = length(y_test_cv))
+)
+
+ggplot(pred_vs_actual, aes(x = Actual, y = Predicted)) +
+  geom_point(alpha = 0.6, color = "#1E88E5", size = 3) +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed", size = 1) +
+  facet_wrap(~ Model, ncol = 3) +
+  labs(title = "Predicted vs. Actual Poverty Rates (Test Set)",
+       subtitle = "Red dashed line = perfect prediction",
+       x = "Actual Poverty Rate (%)",
+       y = "Predicted Poverty Rate (%)") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 14, face = "bold"),
+        strip.text = element_text(size = 10, face = "bold"))
+
+ggsave("../output/figures/predicted_vs_actual_all_models.png",
+       width = 12, height = 8, dpi = 300)
+```
+
+---
+
+# Feature Importance Comparison
+
+## Random Forest Importance
+
+```{r rf-importance-table}
+rf_importance <- importance(rf_final) %>%
+  as.data.frame() %>%
+  rownames_to_column("Variable") %>%
+  arrange(desc(`%IncMSE`)) %>%
+  slice(1:15)
+
+kable(rf_importance,
+      caption = "Top 15 Most Important Variables (Random Forest)",
+      digits = 3) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+# Save
+write_csv(rf_importance, "../output/tables/rf_variable_importance.csv")
+```
+
+## LASSO Selected Features
+
+```{r lasso-features-table}
+lasso_coefs_df <- as.matrix(coef(lasso_final)) %>%
+  as.data.frame() %>%
+  rownames_to_column("Variable") %>%
+  rename(Coefficient = s0) %>%
+  filter(Variable != "(Intercept)", abs(Coefficient) > 0) %>%
+  arrange(desc(abs(Coefficient)))
+
+kable(lasso_coefs_df,
+      caption = "LASSO Selected Features (Non-Zero Coefficients)",
+      digits = 4) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+# Save
+write_csv(lasso_coefs_df, "../output/tables/lasso_coefficients.csv")
+```
+
+## OLS Significant Predictors
+
+```{r ols-significant-table}
+ols_coefs_df <- tidy(ols_final) %>%
+  filter(term != "(Intercept)", p.value < 0.05) %>%
+  arrange(desc(abs(estimate))) %>%
+  select(term, estimate, std.error, statistic, p.value)
+
+kable(ols_coefs_df,
+      caption = "OLS Significant Predictors (p < 0.05)",
+      digits = 4) %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+# Save
+write_csv(ols_coefs_df, "../output/tables/ols_coefficients.csv")
+```
+
+---
+
+# Test Set Predictions by State
+
+```{r test-predictions-table}
+test_predictions <- data.frame(
+  State = test_states_cv,
+  Actual = y_test_cv,
+  OLS = ols_test_pred,
+  LASSO = lasso_test_pred,
+  Tree = tree_test_pred,
+  RF = rf_test_pred,
+  SVR = svr_test_pred
+) %>%
+  mutate(
+    Best_Model = apply(select(., OLS:SVR), 1, function(x) {
+      names(which.min(abs(x - Actual)))
+    }),
+    Best_Prediction = apply(select(., OLS:SVR), 1, function(x) {
+      x[which.min(abs(x - Actual))]
+    }),
+    Best_Error = abs(Actual - Best_Prediction)
+  )
+
+kable(test_predictions %>% mutate(across(where(is.numeric), ~round(., 2))),
+      caption = "Test Set Predictions by State") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                full_width = FALSE, font_size = 11)
+
+# Save
+write_csv(test_predictions, "../output/tables/test_set_predictions.csv")
+```
+
+---
+
+# Save Model Objects
+
+```{r save-models}
+# Create models directory
+dir.create("../models", showWarnings = FALSE)
+
+# Save all final models
+saveRDS(ols_final, "../models/ols_model.rds")
+saveRDS(lasso_final, "../models/lasso_model.rds")
+saveRDS(tree_final, "../models/tree_model.rds")
+saveRDS(rf_final, "../models/rf_model.rds")
+saveRDS(svr_final, "../models/svr_model.rds")
+
+# Save train/test split for reproducibility
+saveRDS(list(
+  train_index = train_index,
+  test_states = test_states_cv,
+  X_train = X_train_cv,
+  y_train = y_train_cv,
+  X_test = X_test_cv,
+  y_test = y_test_cv
+), "../models/train_test_split.rds")
+
+cat("✓ All models saved to models/ directory\n")
+```
+
+---
+
+# Summary & Conclusions
+
+```{r final-summary}
+cat("\n")
+cat(paste(rep("=", 70), collapse = ""), "\n")
+cat("CROSS-VALIDATION & MODEL EVALUATION COMPLETE\n")
+cat(paste(rep("=", 70), collapse = ""), "\n\n")
+
+cat("Files Generated:\n\n")
+
+cat("Tables (5):\n")
+cat("  ✓ output/tables/model_performance_summary.csv\n")
+cat("  ✓ output/tables/rf_variable_importance.csv\n")
+cat("  ✓ output/tables/lasso_coefficients.csv\n")
+cat("  ✓ output/tables/ols_coefficients.csv\n")
+cat("  ✓ output/tables/test_set_predictions.csv\n\n")
+
+cat("Graphs (4):\n")
+cat("  ✓ output/figures/model_comparison_rmse.png\n")
+cat("  ✓ output/figures/model_comparison_r2.png\n")
+cat("  ✓ output/figures/cv_performance_boxplot.png\n")
+cat("  ✓ output/figures/predicted_vs_actual_all_models.png\n\n")
+
+cat("Model Objects (6):\n")
+cat("  ✓ models/ols_model.rds\n")
+cat("  ✓ models/lasso_model.rds\n")
+cat("  ✓ models/tree_model.rds\n")
+cat("  ✓ models/rf_model.rds\n")
+cat("  ✓ models/svr_model.rds\n")
+cat("  ✓ models/train_test_split.rds\n\n")
+
+cat(paste(rep("=", 70), collapse = ""), "\n")
+cat("Best Model:", performance_summary$Model[best_idx], "\n")
+cat("Test RMSE:", round(performance_summary$Test_RMSE[best_idx], 3), "\n")
+cat("Test R²:", round(performance_summary$Test_Rsquared[best_idx], 3), "\n")
+cat(paste(rep("=", 70), collapse = ""), "\n\n")
+```
+
+**Next Steps:**
+1. Review the performance comparison table to identify the best model
+2. Examine cross-validation boxplot for model stability
+3. Check predicted vs. actual plots for systematic errors
+4. Review feature importance to understand key drivers
+5. Use these results to update your final presentation report

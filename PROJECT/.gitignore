@@ -1,0 +1,51 @@
+# R and RStudio files
+.Rhistory
+.RData
+.Rproj.user
+*.Rproj
+
+# Python files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.egg-info/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Model files (usually too large for git)
+*.h5
+*.keras
+*.pkl
+*.rds
+*.joblib
+
+# Data files (if large)
+# Uncomment if your data files are too large
+# *.csv
+# *.xlsx
+# *.json
+
+# Output files
+*.log
+*.out
+
+# Temporary files
+tmp/
+temp/
