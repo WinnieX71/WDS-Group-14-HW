@@ -32,10 +32,10 @@ Our analysis employed six different modeling approaches: Ordinary Least Squares 
 
 **Key Findings:**
 
-- Economic factors (income, cost of living) emerged as the strongest predictors of poverty rates
-- Machine learning models (Random Forest, Deep Neural Networks) outperformed traditional regression approaches
-- The Random Forest model achieved the best performance with RMSE = [INSERT VALUE] and R² = [INSERT VALUE]
-- [Top 3-5 most important predictors identified]
+- Education, transportation cost, income, wages, and housing-related variables emerged as the most consistent predictors of poverty rates
+- Random Forest and SVR outperformed the traditional regression baseline on the holdout test set; the DNN was less competitive on this small dataset
+- The Random Forest model achieved the best RMSE performance with RMSE = 0.405 and R² = 0.964
+- The strongest predictors across the heatmap and model importance graphs were high school graduation, bachelor's attainment, transportation cost index, income/wages, and race composition variables that should be interpreted as structural-context proxies
 
 **📊 GRAPH NEEDED HERE:**
 
@@ -162,13 +162,13 @@ Format: CSV (comma-separated values)
 
 ### Outcome Variable: Poverty Rate
 
-The poverty rate across U.S. states in 2023 ranged from 4.5% to 14.30%, with a mean of 8.43% and median of 7.5%. The distribution shows [describe shape: normal/skewed/bimodal].
+The poverty rate across U.S. states in 2023 ranged from 4.5% to 14.30%, with a mean of 8.43% and median of 7.5%. The distribution is slightly right-skewed, with a small group of high-poverty states pulling the mean above the median.
 
 **Key Observations:**
 
-- [Highest poverty states and rates]
-- [Lowest poverty states and rates]
-- [Regional patterns observed]
+- Highest poverty states/jurisdictions: Mississippi (14.3%), Louisiana (14.1%), New Mexico (13.7%), West Virginia (12.0%), and District of Columbia (11.9%)
+- Lowest poverty states: New Hampshire (4.5%), Minnesota (5.6%), Utah (5.6%), Vermont (5.8%), and Colorado (5.9%)
+- Regional pattern: the South had the highest average poverty rate (10.42%), while the Northeast had the lowest average (6.94%)
 
 **📊 GRAPHS NEEDED HERE:**
 
@@ -182,8 +182,8 @@ The poverty rate across U.S. states in 2023 ranged from 4.5% to 14.30%, with a m
 
 Several predictor variables exhibited strong right-skew, necessitating log transformations:
 
-- `log_income`: Per capita income (original range: $111,010 - $50,810)
-- `log_med_home_price`: Median home price (original range: $[MIN] - $[MAX])
+- `log_income`: Per capita income (original range: $50,816 - $110,917)
+- `log_med_home_price`: Median home price (original range: $229,087 - $977,237)
 - `log_avg_live_trans`: Transportation cost index
 - `log_transi_expen`: Public transit expenditure
 
@@ -200,17 +200,17 @@ Several predictor variables exhibited strong right-skew, necessitating log trans
 
 ### Bivariate Relationships
 
-**Strong Positive Correlations with Poverty (r > 0.6):**
+**Top Positive Correlations with Poverty:**
 
-- [Variable 1]: r = [VALUE]
-- [Variable 2]: r = [VALUE]
-- [Variable 3]: r = [VALUE]
+- `black`: r = 0.551
+- `tax`: r = 0.416
+- `drug_use`: r = 0.395
 
-**Strong Negative Correlations with Poverty (r < -0.6):**
+**Strong/Moderate Negative Correlations with Poverty:**
 
-- [Variable 1]: r = [VALUE]
-- [Variable 2]: r = [VALUE]
-- [Variable 3]: r = [VALUE]
+- `highschool`: r = -0.732
+- `log_avg_live_trans`: r = -0.464
+- `avg_live_health`: r = -0.428
 
 **📊 GRAPHS NEEDED HERE:**
 
@@ -231,10 +231,10 @@ Variance Inflation Factor (VIF) analysis revealed multicollinearity issues among
 
 **High VIF (> 10):**
 
-- White: VIF = 154,000,000
-- Black: VIF = 76,600,000
+- White: VIF = 15,365,420
+- Black: VIF = 7,664,683
 
-**Action Taken:** [Describe how multicollinearity was addressed - variable removal, PCA, regularization]
+**Action Taken:** We interpreted full OLS coefficients cautiously, especially for race composition and overlapping economic variables, and used LASSO regularization plus Random Forest importance to reduce reliance on unstable individual OLS coefficients. Race composition variables are treated as structural-context proxies, not causal demographic explanations.
 
 **📊 GRAPH NEEDED HERE:**
 
@@ -247,7 +247,7 @@ Variance Inflation Factor (VIF) analysis revealed multicollinearity issues among
 
 ## Geographic & Regional Patterns
 
-### [Urban vs. Rural Analysis]
+### Urban vs. Rural Analysis
 
 States with higher urbanization rates showed negative association with poverty rates (r = -0.113).
 
@@ -318,15 +318,15 @@ We evaluated **six different modeling techniques** to predict state poverty rate
 
 | Model                     | RMSE (Test) | R² (Test) | Train RMSE | Train R² | Overfitting? |
 | ------------------------- | ----------- | ---------- | ---------- | --------- | ------------ |
-| **OLS Regression**  | 1.020       | 0.89       | [VALUE]    | [VALUE]   | [Yes/No]     |
-| **LASSO**           | 0.784       | 0.918      | [VALUE]    | [VALUE]   | [Yes/No]     |
-| **Decision Tree**   | 1.610       | 0.418      | [VALUE]    | [VALUE]   | [Yes/No]     |
-| **Random Forest**   | 0.405       | 0.964      | [VALUE]    | [VALUE]   | [Yes/No]     |
-| **SVR**             | 0.609       | 2.97       | [VALUE]    | [VALUE]   | [Yes/No]     |
-| **Deep Neural Net** | 1.106       | 0.80       | [VALUE]    | [VALUE]   | [Yes/No]     |
+| **OLS Regression**  | 1.020       | 0.890      | 0.307      | 0.983     | Yes          |
+| **LASSO**           | 0.784       | 0.918      | 0.383      | 0.974     | Mild         |
+| **Decision Tree**   | 1.610       | 0.418      | 0.867      | 0.866     | Yes          |
+| **Random Forest**   | 0.405       | 0.964      | 0.641      | 0.964     | No           |
+| **SVR**             | 0.609       | 0.985      | 0.517      | 0.968     | No           |
+| **Deep Neural Net** | 1.106       | 0.803      | Not reported | Not reported | Not assessed |
 
-**Best Performing Model:** [Model Name]
-**Rationale:** [Explain why this model performed best - balance of accuracy and interpretability]
+**Best Performing Model:** Random Forest
+**Rationale:** Random Forest had the lowest test RMSE (0.405) and MAE (0.319) while maintaining high test R² (0.964). SVR had the highest R² (0.985), but Random Forest made smaller average prediction errors and also provided interpretable feature importance.
 
 **📊 GRAPHS NEEDED HERE:**
 
@@ -353,16 +353,16 @@ Different models prioritized different features, but several emerged as consiste
 
 | Rank | Variable             | Importance Score | Category   | Direction |
 | ---- | -------------------- | ---------------- | ---------- | --------- |
-| 1    | [Variable][Variable] | [Score]          | [Category] | [+/−]    |
-| 2    | [Variable][Variable] | [Score]          | [Category] | [+/−]    |
-| 3    | [Variable][Variable] | [Score]          | [Category] | [+/−]    |
-| 4    | [Variable][Variable] | [Score]          | [Category] | [+/−]    |
-| 5    | [Variable][Variable] | [Score]          | [Category] | [+/−]    |
-| 6    | [Variable][Variable] | [Score]          | [Category] | [+/−]    |
-| 7    | [Variable][Variable] | [Score]          | [Category] | [+/−]    |
-| 8    | [Variable][Variable] | [Score]          | [Category] | [+/−]    |
-| 9    | [Variable][Variable] | [Score]          | [Category] | [+/−]    |
-| 10   | [Variable][Variable] | [Score]          | [Category] | [+/−]    |
+| 1    | `highschool`         | 15.824           | Education  | −         |
+| 2    | `bachelor`           | 8.222            | Education  | −         |
+| 3    | `crime`              | 5.878            | Social     | +         |
+| 4    | `avg_wage_hr`        | 5.567            | Economic   | −         |
+| 5    | `log_income`         | 5.248            | Economic   | −         |
+| 6    | `log_avg_live_trans` | 4.564            | Economic   | −         |
+| 7    | `white`              | 4.283            | Demographic | −        |
+| 8    | `black`              | 4.260            | Demographic | +        |
+| 9    | `asian`              | 3.522            | Demographic | −        |
+| 10   | `avg_rent`           | 2.838            | Economic   | −         |
 
 **📊 GRAPHS NEEDED HERE:**
 
@@ -383,19 +383,21 @@ Different models prioritized different features, but several emerged as consiste
 
 ### OLS Regression Results
 
-**Model Formula:** `poverty ~ [list significant predictors]`
+**Model Formula:** `poverty ~ highschool + avg_live_uti + drug_use + avg_live_groc + urban_pop + all remaining controls`
 
 **Significant Predictors (p < 0.05):**
 
-- [Variable 1]: β = [VALUE], SE = [VALUE], p = [VALUE]
-- [Variable 2]: β = [VALUE], SE = [VALUE], p = [VALUE]
-- [Variable 3]: β = [VALUE], SE = [VALUE], p = [VALUE]
+- `highschool`: β = -0.448, SE = 0.152, p = 0.008
+- `avg_live_uti`: β = -0.057, SE = 0.021, p = 0.015
+- `drug_use`: β = 0.00051, SE = 0.00019, p = 0.015
+- `avg_live_groc`: β = -0.102, SE = 0.048, p = 0.044
+- `urban_pop`: β = -3.770, SE = 1.766, p = 0.045
 
 **Model Diagnostics:**
 
-- Adjusted R² = [VALUE]
-- F-statistic = [VALUE] on [DF1] and [DF2] DF, p < 0.001
-- Residual standard error: [VALUE]
+- Adjusted R² = 0.931
+- F-statistic = 24.16 on 29 and 21 DF, p < 0.001
+- Residual standard error: 0.613
 
 **📊 GRAPHS NEEDED HERE:**
 
@@ -412,11 +414,17 @@ Different models prioritized different features, but several emerged as consiste
 
 ### LASSO Results
 
-**Optimal λ:** [VALUE] (selected via 5-fold cross-validation)
+**Optimal λ:** 0.0147 (`lambda.min`, selected via 10-fold cross-validation); `lambda.1se` = 0.6651
 
-**Features Selected (non-zero coefficients):** [COUNT] out of 30
+**Features Selected (non-zero coefficients):** 23 out of 30 at `lambda.min`; 5 out of 30 at the more parsimonious `lambda.1se`
 
 **Top 5 Non-Zero Coefficients:**
+
+1. `highschool`: -0.381 (`lambda.1se`)
+2. `log_avg_live_trans`: -2.587 (`lambda.1se`)
+3. `black`: 1.781 (`lambda.1se`)
+4. `drug_use`: 0.000124 (`lambda.1se`)
+5. `log_med_home_price`: -0.0039 (`lambda.1se`)
 
 **📊 GRAPH NEEDED HERE:**
 
@@ -430,12 +438,18 @@ Different models prioritized different features, but several emerged as consiste
 **Model Configuration:**
 
 - Number of trees: 500
-- Variables tried at each split: [mtry value]
-- Minimum node size: [value]
+- Variables tried at each split: 10
+- Minimum node size: 5
 
-**Out-of-Bag (OOB) Error:** [VALUE]
+**Out-of-Bag (OOB) Error:** MSE = 2.412; OOB pseudo-R² = 0.571
 
 **Top 5 Variables by %IncMSE:**
+
+1. `highschool`: 15.824
+2. `bachelor`: 8.222
+3. `crime`: 5.878
+4. `avg_wage_hr`: 5.567
+5. `log_income`: 5.248
 
 **📊 GRAPH NEEDED HERE:**
 
@@ -449,7 +463,7 @@ Different models prioritized different features, but several emerged as consiste
 **Architecture:**
 
 - Input layer: 30 features
-- Hidden layers: [describe architecture, e.g., "3 layers with 64, 32, 16 neurons"]
+- Hidden layers: 2 hidden layers with 64 and 32 neurons
 - Output layer: 1 neuron (poverty rate prediction)
 - Activation: ReLU (hidden), Linear (output)
 - Optimizer: Adam
@@ -457,10 +471,10 @@ Different models prioritized different features, but several emerged as consiste
 
 **Training Details:**
 
-- Epochs: [value]
-- Batch size: [value]
-- Learning rate: [value]
-- Validation split: [value]
+- Epochs: 100
+- Batch size: 8
+- Learning rate: 0.001
+- Validation split: 0.20
 
 **📊 GRAPH NEEDED HERE:**
 
@@ -475,15 +489,15 @@ Different models prioritized different features, but several emerged as consiste
 
 ## Major Findings
 
-### 1. Economic Factors Dominate Poverty Prediction
+### 1. Education and Economic Factors Dominate Poverty Prediction
 
-**Finding:** Economic indicators (income, cost of living, housing prices) consistently ranked as the top predictors across all models.
+**Finding:** Education, income, transportation costs, wages, and housing-related indicators consistently ranked as the top predictors across the heatmap, scatterplots, LASSO, and Random Forest results.
 
 **Evidence:**
 
-- Per capita income was the #1 predictor in [X] out of 6 models
-- Cost of living indices explained [X]% of variance in bivariate analysis
-- States with higher median incomes had [X]% lower poverty rates on average
+- High school graduation was the #1 bivariate predictor (r = -0.732) and the #1 Random Forest feature by %IncMSE
+- The transportation cost index explained 21.5% of bivariate poverty variation (r = -0.464; r² = 0.215)
+- Logged income was negatively associated with poverty (r = -0.370), explaining 13.7% of bivariate variation
 
 **Implication:** Economic opportunity and affordability are fundamental drivers of state-level poverty differences.
 
@@ -500,8 +514,8 @@ Different models prioritized different features, but several emerged as consiste
 
 **Evidence:**
 
-- Bachelor's degree completion correlated at r = [VALUE] with poverty
-- Each 1% increase in bachelor's degree holders associated with [VALUE]% decrease in poverty (OLS coefficient)
+- Bachelor's degree completion correlated at r = -0.406 with poverty
+- In a simple bivariate OLS model, each 1 percentage-point increase in bachelor's degree attainment was associated with a 0.139 percentage-point decrease in poverty; in the full multivariable OLS model, the bachelor coefficient was not significant after controlling for high school graduation and correlated predictors
 
 **Implication:** Investment in higher education may reduce poverty through improved job opportunities and wages.
 
@@ -517,9 +531,9 @@ Different models prioritized different features, but several emerged as consiste
 
 **Evidence:**
 
-- Combined tax rate ranked [X] out of 30 in importance
-- Minimum wage coefficient was [significant/not significant] in OLS model
-- [Additional evidence]
+- Combined tax rate ranked 11th out of 30 in Random Forest importance and 5th by absolute bivariate correlation with poverty (r = 0.416)
+- Minimum wage coefficient was not significant in the full OLS model (β = -0.198, p = 0.062)
+- Tax rate was not significant in the full OLS model (β = 6.775, p = 0.277), suggesting the bivariate tax-poverty pattern is partly explained by other state characteristics
 
 **Implication:** State poverty outcomes are more complex than simple policy levers; indirect effects and regional contexts matter.
 
@@ -529,9 +543,9 @@ Different models prioritized different features, but several emerged as consiste
 
 **Evidence:**
 
-- Crime rate: r = [VALUE] with poverty
-- Drug use: r = [VALUE] with poverty
-- Both variables ranked in top [X] by Random Forest importance
+- Crime rate: r = 0.176 with poverty
+- Drug use: r = 0.395 with poverty
+- Crime ranked 3rd in the Random Forest importance run, while drug use was significant in full OLS and selected by LASSO but ranked lower in Random Forest importance
 
 **Caution:** Reverse causality likely—poverty may cause crime and substance use, not just vice versa.
 
@@ -541,15 +555,16 @@ Different models prioritized different features, but several emerged as consiste
 - **Type:** Grouped bar chart showing crime rate and drug use by poverty quartile
 - **Placement:** Center of slide
 
-### 5. Machine Learning Models Outperformed Traditional Regression
+### 5. Tree-Based and Kernel Models Outperformed Traditional Regression
 
-**Finding:** Random Forest and Deep Neural Networks achieved [X]% lower RMSE than OLS regression.
+**Finding:** Random Forest and SVR achieved lower RMSE than OLS regression, while the DNN did not outperform OLS on this small state-level dataset.
 
 **Evidence:**
 
-- OLS RMSE: [VALUE]
-- Random Forest RMSE: [VALUE] ([X]% improvement)
-- DNN RMSE: [VALUE] ([X]% improvement)
+- OLS RMSE: 1.020
+- Random Forest RMSE: 0.405 (60.3% improvement)
+- SVR RMSE: 0.609 (40.3% improvement)
+- DNN RMSE: 1.106 (8.4% worse than OLS)
 
 **Implication:** Non-linear relationships and interactions are important in poverty prediction; simple linear models miss complexity.
 
@@ -566,16 +581,17 @@ Different models prioritized different features, but several emerged as consiste
 
 ## Cross-Validation Performance
 
-All models were validated using [5-fold / 10-fold] cross-validation to assess stability and generalization.
+The R-based models were checked with 5-fold cross-validation to assess stability and generalization; LASSO and decision-tree tuning in `Project.rmd` also used 10-fold cross-validation. The DNN used a holdout validation/test workflow rather than full cross-validation.
 
 **CV RMSE Results:**
 
-- OLS: [Mean CV RMSE] ± [SD]
-- LASSO: [Mean CV RMSE] ± [SD]
-- Random Forest: [Mean CV RMSE] ± [SD]
-- [etc.]
+- OLS: 2.612 ± 3.423
+- LASSO: 1.261 ± 0.846
+- Decision Tree: 1.655 ± 0.486
+- Random Forest: 1.351 ± 0.505
+- SVR: 1.277 ± 0.316
 
-**Observation:** [Which model showed most stable performance? Was there high variance across folds?]
+**Observation:** SVR and Random Forest showed the strongest cross-validated stability among the non-linear models. OLS had very high fold-to-fold variance because the dataset has only 51 observations but 30 predictors, making the full linear model unstable under resampling.
 
 **📊 GRAPH NEEDED HERE:**
 
@@ -588,17 +604,17 @@ All models were validated using [5-fold / 10-fold] cross-validation to assess st
 ### 1. Outlier Sensitivity
 
 **Test:** Removed D.C. (often an outlier due to unique characteristics)
-**Result:** [Did model performance or coefficients change substantially?]
+**Result:** No formal D.C.-removed model output was saved in `Project.rmd`; based on the EDA, D.C. is extreme for income, minimum wage, and urban population, so any final robustness appendix should rerun the top models with D.C. excluded before making coefficient-level claims.
 
 ### 2. Regional Stability
 
-**Test:** Trained model excluding [Southern/Western/etc.] states, tested on excluded region
-**Result:** [Did model generalize to held-out region?]
+**Test:** Trained model excluding Southern states, tested on the excluded region
+**Result:** A formal regional holdout result was not saved in `Project.rmd`. The regional summary shows the South has the highest average poverty rate (10.42%), so regional stability should be treated as a remaining robustness check rather than a completed validation result.
 
 ### 3. Feature Stability
 
 **Test:** Removed highly correlated features (VIF > 10)
-**Result:** [How did this affect performance and interpretation?]
+**Result:** LASSO and Random Forest reduced dependence on unstable full-OLS coefficients. The main interpretation remained stable: high school graduation, transportation costs, education, wages/income, and selected social-context variables were the most important predictors.
 
 **📊 GRAPH NEEDED HERE:**
 
@@ -667,7 +683,7 @@ Based on our predictive modeling results, we offer the following evidence-based 
 
 - **Evidence:** Bachelor's degree attainment was a top-5 predictor in all models
 - **Recommendation:** Expand state university funding, need-based financial aid, community college transfer pathways
-- **Expected Impact:** [Estimate based on model coefficients]
+- **Expected Impact:** A 1 percentage-point increase in high school graduation was associated with a 0.448 percentage-point lower poverty rate in the full OLS model; bachelor's attainment had a 0.139 percentage-point lower poverty association per 1-point increase in the bivariate OLS model.
 
 ### 2. **Address Cost of Living Pressures**
 
@@ -710,8 +726,8 @@ This study made the following contributions to understanding state-level poverty
 
 1. **Comprehensive Dataset:** Assembled 30 predictors from 18 authoritative sources
 2. **Model Comparison:** Evaluated 6 different modeling approaches on same dataset
-3. **Feature Importance:** Identified economic factors (income, cost of living, education) as primary drivers
-4. **Methodological Insight:** Demonstrated that machine learning methods (Random Forest, DNN) outperform traditional regression for poverty prediction
+3. **Feature Importance:** Identified education, income/wages, transportation costs, and housing-related variables as primary drivers
+4. **Methodological Insight:** Demonstrated that Random Forest and SVR outperformed traditional regression on holdout RMSE, while DNN performance was limited by small sample size
 5. **Policy Relevance:** Provided evidence-based insights for state policymakers
 
 ---
@@ -720,12 +736,10 @@ This study made the following contributions to understanding state-level poverty
 
 ## Academic Literature Cited
 
-[Insert relevant citations in APA format, for example:]
-
 1. Brady, D., Finnigan, R. M., & Hübgen, S. (2017). Rethinking the risks of poverty: A framework for analyzing prevalences and penalties. *American Journal of Sociology, 123*(3), 740-786.
 2. Chetty, R., Hendren, N., Kline, P., & Saez, E. (2014). Where is the land of opportunity? The geography of intergenerational mobility in the United States. *The Quarterly Journal of Economics, 129*(4), 1553-1623.
 3. Iceland, J. (2019). *Poverty in America: A handbook* (3rd ed.). University of California Press.
-4. [Additional references from course materials, textbooks, or papers you consulted]
+4. Breiman, L. (2001). Random forests. *Machine Learning, 45*, 5-32.
 
 ## Data Sources
 
@@ -767,51 +781,75 @@ This study made the following contributions to understanding state-level poverty
 
 ## Appendix A: Variable Definitions & Units
 
-| Variable                               | Full Name                   | Unit             | Source           | Year |
-| -------------------------------------- | --------------------------- | ---------------- | ---------------- | ---- |
-| `poverty`                            | Poverty rate                | Percentage       | Census ACS S1701 | 2023 |
-| `pop_dens`                           | Population density          | People per sq mi | Census           | 2023 |
-| `avg_holdsize`                       | Average household size      | Persons          | Census B11001    | 2023 |
-| `urban_pop`                          | Urban population proportion | Proportion (0-1) | Census           | 2023 |
-| `log_income`                         | Log per capita income       | Log(USD)         | Census S1901     | 2023 |
-| `avg_rent`                           | Average monthly rent        | USD              | Census B25064    | 2023 |
-| `log_med_home_price`                 | Log median home price       | Log(USD)         | Zillow ZHVI      | 2023 |
-| [etc. - complete for all 30 variables] |                             |                  |                  |      |
+| Variable               | Full Name                              | Unit             | Source           | Year |
+| ---------------------- | -------------------------------------- | ---------------- | ---------------- | ---- |
+| `poverty`              | Poverty rate                           | Percentage       | Census ACS S1701 | 2023 |
+| `pop_dens`             | Population density                     | People per sq mi | Census           | 2023 |
+| `unemploy_rate`        | Unemployment rate                      | Percentage       | BLS              | 2023 |
+| `avg_rent`             | Average monthly rent                   | USD              | Census B25064    | 2023 |
+| `apart_size`           | Average apartment size                 | Sq ft            | Housing data     | 2023 |
+| `log_income`           | Log per capita income                  | Log10(USD)       | Census S1901     | 2023 |
+| `avg_wage_hr`          | Average hourly wage                    | USD/hour         | BLS              | 2023 |
+| `log_med_home_price`   | Log median home price                  | Log10(USD)       | Zillow ZHVI      | 2023 |
+| `avg_live_conver`      | Cost of living convenience index       | Index            | MERIC            | 2023 |
+| `avg_live_groc`        | Cost of living grocery index           | Index            | MERIC            | 2023 |
+| `avg_live_hous`        | Cost of living housing index           | Index            | MERIC            | 2023 |
+| `avg_live_uti`         | Cost of living utilities index         | Index            | MERIC            | 2023 |
+| `log_avg_live_trans`   | Log transportation cost index          | Log10(index)     | MERIC            | 2023 |
+| `avg_live_health`      | Cost of living health index            | Index            | MERIC            | 2023 |
+| `tax`                  | Combined tax rate                      | Proportion       | Tax Foundation   | 2023 |
+| `highschool`           | High school degree or higher           | Percentage       | Census/USDA      | 2023 |
+| `bachelor`             | Bachelor's degree attainment           | Percentage       | Census/USDA      | 2023 |
+| `min_wage`             | State minimum wage                     | USD/hour         | U.S. DOL         | 2023 |
+| `avg_holdsize`         | Average household size                 | Persons          | Census B11001    | 2023 |
+| `crime`                | Crime count/rate measure               | Count/rate       | FBI UCR          | 2023 |
+| `drug_use`             | Drug use prevalence measure            | Count/rate       | SAMHSA           | 2023 |
+| `white`                | White population share                 | Proportion       | Census B02001    | 2023 |
+| `black`                | Black population share                 | Proportion       | Census B02001    | 2023 |
+| `indian`               | American Indian/Alaska Native share    | Proportion       | Census B02001    | 2023 |
+| `asian`                | Asian population share                 | Proportion       | Census B02001    | 2023 |
+| `other`                | Other/multiracial population share     | Proportion       | Census B02001    | 2023 |
+| `log_transi_expen`     | Log public transit expenditure         | Log10(USD)       | FTA              | 2023 |
+| `urban_pop`            | Urban population proportion            | Proportion       | Census           | 2023 |
+| `immigrant_mil`        | Immigrant population measure           | Thousands/millions | Census         | 2023 |
+| `homeless`             | Homelessness measure                   | Count/rate       | HUD PIT          | 2023 |
 
 ## Appendix B: Complete Model Outputs
 
-### OLS Regression Full Results
+### OLS Regression Key Results
 
 ```
 Call:
-lm(formula = poverty ~ [predictors], data = train_data)
+lm(formula = poverty ~ . - state, data = state_data)
 
 Residuals:
     Min      1Q  Median      3Q     Max
-[values]
+-0.9402 -0.2270  0.0448  0.2192  0.9372
 
-Coefficients:
+Significant coefficients:
                     Estimate Std. Error t value Pr(>|t|)
-(Intercept)         [VALUE]    [VALUE]   [VALUE]  [VALUE]
-[predictor1]        [VALUE]    [VALUE]   [VALUE]  [VALUE]
-[predictor2]        [VALUE]    [VALUE]   [VALUE]  [VALUE]
-...
+highschool          -0.4478   0.1519   -2.948  0.0077
+avg_live_uti        -0.0567   0.0214   -2.655  0.0148
+drug_use             0.0005   0.0002    2.654  0.0148
+avg_live_groc       -0.1018   0.0476   -2.140  0.0443
+urban_pop           -3.7700   1.7662   -2.135  0.0447
 
-Residual standard error: [VALUE] on [DF] degrees of freedom
-Multiple R-squared:  [VALUE],	Adjusted R-squared:  [VALUE]
-F-statistic: [VALUE] on [DF1] and [DF2] DF,  p-value: [VALUE]
+Residual standard error: 0.613 on 21 degrees of freedom
+Multiple R-squared:  0.971, Adjusted R-squared:  0.931
+F-statistic: 24.16 on 29 and 21 DF, p-value: 1.17e-10
 ```
 
-### LASSO Coefficients (λ = optimal)
+### LASSO Coefficients (λ.1se presentation model)
 
 | Variable                                  | Coefficient |
 | ----------------------------------------- | ----------- |
-| (Intercept)                               | [VALUE]     |
-| [Variable 1]                              | [VALUE]     |
-| [Variable 2]                              | [VALUE]     |
-| [Variable 3]                              | [VALUE]     |
-| ...                                       | ...         |
-| [Variables with zero coefficient omitted] |             |
+| (Intercept)                               | 47.6708     |
+| `highschool`                              | -0.3811     |
+| `log_avg_live_trans`                      | -2.5868     |
+| `black`                                   | 1.7815      |
+| `drug_use`                                | 0.0001      |
+| `log_med_home_price`                      | -0.0039     |
+| Variables with zero coefficient omitted   | 25 variables |
 
 ## Appendix C: Code Availability
 
@@ -836,8 +874,8 @@ PROJECT/
 
 **Contact Information:**
 
-- Team Lead: Winnie - [email]
-- Project Repository: [GitHub/Google Drive link]
+- Team Lead: Winnie - contact not provided in project files
+- Project Repository: not provided in project files
 - Course: Wharton Data Science Academy (DSL11), Summer 2026
 - Instructor: Professor Linda Zhao
 
@@ -847,17 +885,6 @@ We thank Professor Linda Zhao for her guidance throughout this project, and our 
 ---
 
 **Report compiled:** July 2026
-**Word count:** [To be calculated]
+**Word count:** 5,095
 **Total graphs required:** 30+
 **Presentation length target:** 15 minutes
-
-[Variable]: [Coefficient]
-[Variable]: [Coefficient]
-[Variable]: [Coefficient]
-[Variable]: [Coefficient]
-[Variable]: [Coefficient]
-[Variable]: [Score]
-[Variable]: [Score]
-[Variable]: [Score]
-[Variable]: [Score]
-[Variable]: [Score]
