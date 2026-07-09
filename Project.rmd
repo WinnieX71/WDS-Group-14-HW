@@ -176,6 +176,78 @@ stat.poverty.plot <- plot_usmap(regions = "state",
 stat.poverty.plot
 ```
 
+
+```{r}
+library(shiny)
+library(plotly)
+library(dplyr)
+
+ui <- fluidPage(
+  titlePanel("Interactive State Poverty Rate Heat Map"),
+  
+  plotlyOutput("poverty_map", height = "650px")
+)
+
+server <- function(input, output) {
+  
+  output$poverty_map <- renderPlotly({
+    
+    state_lookup <- data.frame(
+      state = c(state.name, "District of Columbia"),
+      abbr = c(state.abb, "DC")
+    )
+    
+    plot_data <- state_data %>%
+      left_join(state_lookup, by = "state") %>%
+      mutate(
+        hover_text = paste0(
+          "State: ", state,
+          "<br>Poverty Rate: ", round(poverty, 1), "%"
+        )
+      )
+    
+    plot_ly(
+      data = plot_data,
+      type = "choropleth",
+      locationmode = "USA-states",
+      locations = ~abbr,
+      z = ~poverty,
+      text = ~hover_text,
+      hoverinfo = "text",
+      colorscale = list(
+        c(0.00, "#d7191c"),
+        c(0.25, "#fdae61"),
+        c(0.50, "#f7f7f7"),
+        c(0.75, "#74add1"),
+        c(1.00, "#08306b")
+      ),
+      zmin = min(plot_data$poverty, na.rm = TRUE),
+      zmax = max(plot_data$poverty, na.rm = TRUE),
+      marker = list(
+        line = list(color = "white", width = 1.2)
+      ),
+      colorbar = list(title = "Poverty<br>Rate (%)")
+    ) %>%
+      layout(
+        title = list(
+          text = "State Poverty Rate<br><sup>Red = lower poverty; blue = higher poverty</sup>",
+          x = 0.02
+        ),
+        geo = list(
+          scope = "usa",
+          projection = list(type = "albers usa"),
+          showlakes = TRUE,
+          lakecolor = "white",
+          bgcolor = "rgba(0,0,0,0)"
+        ),
+        margin = list(l = 0, r = 0, t = 70, b = 0)
+      )
+  })
+}
+
+shinyApp(ui = ui, server = server)
+```
+
 ---
 
 # Correlation Analysis
@@ -263,6 +335,13 @@ grid.arrange(grobs = plot_list, ncol = 2)
 
 ```{r pairs-plot}
 # Select poverty rate + top 4 predictors
+top_4_vars <- c(
+  "highschool",
+  "log_income",
+  "log_avg_live_trans",
+  "avg_live_health"
+)
+
 pairs_data <- state_data %>%
  select(poverty, all_of(top_4_vars))
 
@@ -272,6 +351,7 @@ ggpairs(pairs_data,
        lower = list(continuous = "smooth"),
        upper = list(continuous = "cor"))
 ```
+
 
 ---
 
@@ -381,12 +461,47 @@ train_data$state <- NULL
 test_data$state  <- NULL
 ```
 
+```{r}
+train_data
+```
+
 # Linear Regression
 
 ```{r}
 fit1 <- lm(poverty ~ ., train_data)
 
 summary(fit1)
+```
+
+```{r}
+vif_df <- tibble(
+  Variable = names(car::vif(fit1)),
+  VIF = as.numeric(car::vif(fit1))
+) %>%
+  mutate(
+    Severity = case_when(
+      VIF < 5 ~ "Low",
+      VIF < 10 ~ "Moderate",
+      TRUE ~ "High"
+    )
+  ) %>%
+  arrange(desc(VIF)) %>%
+  slice_head(n = 15)
+
+vif_plot <- ggplot(vif_df, aes(x = reorder(Variable, log10(VIF)), y = log10(VIF), fill = Severity)) +
+  geom_col(width = 0.7) +
+  geom_hline(yintercept = log10(10), linetype = "dashed", color = "gray35") +
+  coord_flip() +
+  scale_fill_manual(values = c("Low" = "#2A9D8F", "Moderate" = "#E9C46A", "High" = "#D1495B")) +
+  labs(
+    title = "Variance Inflation Factor Check",
+    subtitle = "Log10(VIF) shown because race-composition variables are extremely collinear",
+    x = NULL,
+    y = "log10(VIF)"
+  ) 
+
+vif_plot
+
 ```
 
 ```{r}
@@ -408,6 +523,7 @@ cat("MAE:", mae_val, "\n")
 rss_value <- sum((test_data$poverty - predictions)^2)
 cat("RSS:", rss_value, "\n")
 ```
+
 
 # Relex LASSO
 
@@ -489,6 +605,14 @@ cat("RSS:", rss_value, "\n")
 fit.1se <- lm(poverty ~ ., se_data)
 summary(fit.1se)
 ```
+
+ The Lasso model selected high school graduation rate and Black population share as the strongest predictors of state poverty. 
+ 
+ When we run the linear model, higher high school graduation rates were associated with lower poverty, while higher Black population share was associated with higher poverty. 
+ 
+ These are state-level associations and should not be interpreted as causal effects.
+
+
 
 ```{r}
 # Make predictions (this part is now correct!)
@@ -812,7 +936,7 @@ svr <- svr_model
 lasso <- fit.min
 ols <- fit1
 dt <- tree_model
-nn <- load_model_native("/Users/winniex/Desktop/WDS_2026_AI_HOME/Project/Models/nn_model_l2_poverty_prediction.keras")
+# nn <- load_model_native("/Users/winniex/Desktop/WDS_2026_AI_HOME/Project/Models/nn_model_l2_poverty_prediction.keras")
 ```
 
 ## Model Performance Comparison
@@ -943,3 +1067,36 @@ pdg <- ggplot(data_long, aes(x = value)) +
 pdg
 ```
 
+
+```{r}
+library(tidyverse)
+
+# 1. Create and pivot the tibble correctly
+train_test_rmse <- tibble(
+  Model = c("OLS", "LASSO", "Decision Tree", "Random Forest", "SVR", "Deep Neural Net"),
+  Train_RMSE = c(0.307, 0.383, 0.867, 0.641, 0.517, 1.124),
+  Test_RMSE = c(1.020, 0.784, 1.610, 0.405, 0.609, 1.106)
+) %>%
+  pivot_longer(cols = c(Train_RMSE, Test_RMSE), names_to = "Dataset", values_to = "RMSE") %>%
+  mutate(Dataset = case_match(Dataset, 
+                              "Train_RMSE" ~ "Train", 
+                              "Test_RMSE" ~ "Test"))
+
+# 2. Plot the data
+rmse_plot <- train_test_rmse %>%
+  ggplot(aes(x = fct_reorder(Model, RMSE, .fun = min, na.rm = TRUE), y = RMSE, fill = Dataset)) +
+  geom_col(position = position_dodge(width = 0.75), width = 0.65, na.rm = TRUE) +
+  coord_flip() +
+  labs(
+    title = "Train vs. Test RMSE",
+    subtitle = "Lower RMSE indicates smaller prediction error",
+    x = NULL,
+    y = "RMSE"
+  )
+
+# Display the plot
+rmse_plot
+```
+
+
+ 
