@@ -92,12 +92,15 @@ library(dplyr)
 
 # Load your cleaned dataset
 # Update the file path to match your data location
-state_data <- read.csv("/Users/winniex/Desktop/WDS/Project/dataset - Sheet1 (2).csv", sep=",", header=T, as.is=T)
+state_data <- read.csv("/Users/winniex/Desktop/WDS_2026_AI_HOME/Project/dataset - Sheet1 (2).csv", sep=",", header=T, as.is=T)
 
+state_data <- state_data %>%
+  rename("state"="State")
 
 # Show first few rows
 head(state_data)
 ```
+
 
 
 ```{r data-structure}
@@ -137,14 +140,7 @@ cat("Number of states:", nrow(state_data), "\n")
 cat("Number of variables:", ncol(state_data), "\n")
 ```
 
-```{r}
-state_data <- state_data %>%
-  rename("state"="State")
-
-```
-
 ---
-
 
 # Outcome Variable: Poverty Rate
 
@@ -170,11 +166,8 @@ ggplot(state_data, aes(x = poverty)) +
 
 ```{r}
 library(usmap)
-#names(data.s)  # hist(data.s$crime.rate)
-#levels(data.s$state)
 
 stat.poverty.plot <- plot_usmap(regions = "state",                   
-                              #regions = "counties", for county level summary
     data = state_data, 
     values = "poverty", color = "black") + 
     labs(title = "State Poverty Rate", subtitle = "Continental US States") +
@@ -192,10 +185,8 @@ stat.poverty.plot
 numeric_vars <- state_data %>%
  select(where(is.numeric)) 
 
-
 # Calculate correlation matrix
 cor_matrix <- cor(numeric_vars, use = "complete.obs")
-
 
 # Visualize correlation matrix
 corrplot(cor_matrix,
@@ -261,14 +252,11 @@ plot_list <- lapply(top_4_vars, function(var) {
    theme_minimal()
 })
 
-
 # Display in grid
 grid.arrange(grobs = plot_list, ncol = 2)
 ```
 
-
 ---
-
 
 # Pairs Plot
 
@@ -278,7 +266,6 @@ grid.arrange(grobs = plot_list, ncol = 2)
 pairs_data <- state_data %>%
  select(poverty, all_of(top_4_vars))
 
-
 # Create pairs plot
 ggpairs(pairs_data,
        title = "Pairs Plot: Poverty Rate and Top 4 Predictors",
@@ -286,17 +273,11 @@ ggpairs(pairs_data,
        upper = list(continuous = "cor"))
 ```
 
-
 ---
-
 
 # Distribution of Key Predictors
 
-
 ```{r predictor-distributions}
-state_data <- state_data %>%
-  mutate()
-
 # Histograms for top 4 predictors
 plot_list_hist <- lapply(top_4_vars, function(var) {
  ggplot(state_data, aes_string(x = var)) +
@@ -305,23 +286,18 @@ plot_list_hist <- lapply(top_4_vars, function(var) {
    theme_minimal()
 })
 
-
 # Display
 grid.arrange(grobs = plot_list_hist, ncol = 2)
 ```
 
-
 ---
 
-
 # Summary Statistics
-
 
 ```{r summary-stats}
 # Summary for poverty rate and top predictors
 summary_vars <- state_data %>%
  select(poverty, all_of(top_4_vars))
-
 
 cat("Summary statistics for key variables:\n")
 summary(summary_vars)
@@ -341,7 +317,6 @@ top_cors_categorized <- top_cors %>%
    Direction = ifelse(Correlation > 0, "Positive", "Negative")
  )
 
-
 cat("\nCorrelation strength and direction:\n")
 print(top_cors_categorized)
 ```
@@ -349,7 +324,6 @@ print(top_cors_categorized)
 ---
 
 # Key Findings
-
 
 ```{r key-findings}
 # Calculate key metrics
@@ -385,17 +359,54 @@ cat("  - Check for multicollinearity (VIF)\n")
 cat("  - Consider log transformations for skewed variables\n")
 ```
 
+
 **4. Preliminary analysis**
 
 With all the techniques we have learned so far, let's try to build models for your goal of study. 
 Please summarize what you have learned from the model. Do the results make sense? 
 
+# Load Data and Split into Train/Test Sets
+
+```{r}
+library(rpart)
+library(rpart.plot)
+library(caret)
+
+set.seed(123)
+train_index <- createDataPartition(state_data$poverty, p = 0.8, list = FALSE)
+train_data <- state_data[train_index, ]
+test_data <- state_data[-train_index, ]
+
+train_data$state <- NULL
+test_data$state  <- NULL
+```
+
 # Linear Regression
 
 ```{r}
-fit1 <- lm(poverty ~ .-state, state_data)
+fit1 <- lm(poverty ~ ., train_data)
 
 summary(fit1)
+```
+
+```{r}
+# Make predictions (this part is now correct!)
+predictions <- predict(fit1, test_data)
+
+# 1. Calculate Root Mean Squared Error
+rmse_val <- RMSE(predictions, test_data$poverty)
+cat("RMSE:", rmse_val, "\n")
+
+# 2. Calculate R-squared (variance explained)
+r2_val <- R2(predictions, test_data$poverty)
+cat("R-squared:", r2_val, "\n")
+
+# 3. Calculate Mean Absolute Error
+mae_val <- MAE(predictions, test_data$poverty)
+cat("MAE:", mae_val, "\n")
+
+rss_value <- sum((test_data$poverty - predictions)^2)
+cat("RSS:", rss_value, "\n")
 ```
 
 # Relex LASSO
@@ -403,8 +414,8 @@ summary(fit1)
 ```{r}
 library(glmnet)
 
-y <- state_data[,31] # extract Y
-x <- model.matrix(poverty~.-state, data=state_data)
+y <- train_data$poverty # extract Y
+x <- model.matrix(poverty~., data=train_data)
 
 set.seed(10)
 
@@ -431,7 +442,7 @@ coef.min
 
 ```{r}
 var_min <- rownames(coef.min)[-1]
-min_data <- state_data[, c("poverty", var_min)]
+min_data <- train_data[, c("poverty", var_min)]
 min_data
 ```
 
@@ -443,7 +454,7 @@ coef.1se
 
 ```{r}
 var_1se <- rownames(coef.1se)[-1]
-se_data <- state_data[, c("poverty", var_1se)]
+se_data <- train_data[, c("poverty", var_1se)]
 se_data
 ```
 
@@ -454,32 +465,52 @@ summary(fit.min)
 ```
 
 ```{r}
+# Make predictions (this part is now correct!)
+predictions <- predict(fit.min, test_data)
+
+# 1. Calculate Root Mean Squared Error
+rmse_val <- RMSE(predictions, test_data$poverty)
+cat("RMSE:", rmse_val, "\n")
+
+# 2. Calculate R-squared (variance explained)
+r2_val <- R2(predictions, test_data$poverty)
+cat("R-squared:", r2_val, "\n")
+
+# 3. Calculate Mean Absolute Error
+mae_val <- MAE(predictions, test_data$poverty)
+cat("MAE:", mae_val, "\n")
+
+rss_value <- sum((test_data$poverty - predictions)^2)
+cat("RSS:", rss_value, "\n")
+```
+
+```{r}
 #1se
 fit.1se <- lm(poverty ~ ., se_data)
 summary(fit.1se)
 ```
 
-# Decision Tree
-
 ```{r}
-#install.packages("rpart")
-#install.packages("rpart.plot")
-#install.packages("caret")
+# Make predictions (this part is now correct!)
+predictions <- predict(fit.1se, test_data)
 
-#Load Data and Split into Train/Test Sets
-library(rpart)
-library(rpart.plot)
-library(caret)
+# 1. Calculate Root Mean Squared Error
+rmse_val <- RMSE(predictions, test_data$poverty)
+cat("RMSE:", rmse_val, "\n")
 
-data(iris)
-set.seed(123)
-train_index <- createDataPartition(state_data$poverty, p = 0.8, list = FALSE)
-train_data <- state_data[train_index, ]
-test_data <- state_data[-train_index, ]
+# 2. Calculate R-squared (variance explained)
+r2_val <- R2(predictions, test_data$poverty)
+cat("R-squared:", r2_val, "\n")
 
-train_data$state <- NULL
-test_data$state  <- NULL
+# 3. Calculate Mean Absolute Error
+mae_val <- MAE(predictions, test_data$poverty)
+cat("MAE:", mae_val, "\n")
+
+rss_value <- sum((test_data$poverty - predictions)^2)
+cat("RSS:", rss_value, "\n")
 ```
+
+# Decision Tree
 
 ```{r}
 #Train the Model
@@ -487,6 +518,8 @@ tree_model <- rpart(poverty ~ .,
                     data = train_data, 
                     method = "anova",  # for regression
                     control = rpart.control(minsplit = 10, cp = 0.01))
+
+tree_model
 ```
 
 ```{r}
@@ -512,7 +545,11 @@ cat("R-squared:", r2_val, "\n")
 # 3. Calculate Mean Absolute Error
 mae_val <- MAE(predictions, test_data$poverty)
 cat("MAE:", mae_val, "\n")
+
+rss_value <- sum((test_data$poverty - predictions)^2)
+cat("RSS:", rss_value, "\n")
 ```
+
 
 ```{r}
 #Prune the Tree
@@ -523,19 +560,62 @@ rpart.plot(pruned_tree)
 ```
 
 ```{r}
+# Make predictions (this part is now correct!)
+predictions <- predict(pruned_tree, test_data, type = "vector")
+
+# Evaluate Regression performance instead of using a Confusion Matrix
+library(caret)
+
+# 1. Calculate Root Mean Squared Error
+rmse_val <- RMSE(predictions, test_data$poverty)
+cat("RMSE:", rmse_val, "\n")
+
+# 2. Calculate R-squared (variance explained)
+r2_val <- R2(predictions, test_data$poverty)
+cat("R-squared:", r2_val, "\n")
+
+# 3. Calculate Mean Absolute Error
+mae_val <- MAE(predictions, test_data$poverty)
+cat("MAE:", mae_val, "\n")
+
+rss_value <- sum((test_data$poverty - predictions)^2)
+cat("RSS:", rss_value, "\n")
+```
+
+```{r}
 # Tuning Hyperparameters
+set.seed(10)
+
 control <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
 tuned_tree <- train(poverty ~ ., 
-                    data = state_data, 
+                    data = train_data, 
                     method = "rpart",
                     trControl = control,
-                    tuneGrid = expand.grid(cp = seq(0.01, 0.1, 0.01)))
+                    tuneGrid = expand.grid(cp = seq(0.1, 0.6, by = 0.05)))  # Try cp values from 0 to 1 in increments of 0.1
 print(tuned_tree)
 ```
 
 ```{r}
-# Original Model
+# Make predictions (this part is now correct!)
+predictions <- predict(tuned_tree, test_data)
 
+# 1. Calculate Root Mean Squared Error
+rmse_val <- RMSE(predictions, test_data$poverty)
+cat("RMSE:", rmse_val, "\n")
+
+# 2. Calculate R-squared (variance explained)
+r2_val <- R2(predictions, test_data$poverty)
+cat("R-squared:", r2_val, "\n")
+
+# 3. Calculate Mean Absolute Error
+mae_val <- MAE(predictions, test_data$poverty)
+cat("MAE:", mae_val, "\n")
+
+rss_value <- sum((test_data$poverty - predictions)^2)
+cat("RSS:", rss_value, "\n")
+```
+
+```{r}
 # 1. Extract the feature importance
 # Decision trees store importance directly inside the model object
 tree_importance <- tree_model$variable.importance
@@ -559,7 +639,6 @@ ggplot(importance_df, aes(x = reorder(Feature, Importance), y = Importance)) +
 # Random Forest
 
 
-
 ```{r}
 #install.packages("randomForest")
 library(randomForest)
@@ -567,27 +646,29 @@ head(state_data)
 ```
 
 ```{r}
-set.seed(42)
-
-trainIndex <- sample(1:nrow(state_data), 0.8 * nrow(state_data))
-
-trainData <- state_data[trainIndex, ]
-testData <- state_data[-trainIndex, ]
-
-trainData$state <- NULL
-testData$state  <- NULL
-```
-```{r}
-rf_model <- randomForest(poverty ~ ., data = trainData)
+rf_model <- randomForest(poverty ~ ., data = train_data)
 print(rf_model)
 ```
 
-```{r}
-predictions <- predict(rf_model, testData)
-MAE(predictions, testData$poverty)
 
-rf_tuned <- randomForest(poverty ~ ., data = trainData, ntree = 500, mtry = 10)
-print(rf_tuned)
+```{r}
+# Make predictions (this part is now correct!)
+predictions <- predict(rf_model, test_data)
+
+# 1. Calculate Root Mean Squared Error
+rmse_val <- RMSE(predictions, test_data$poverty)
+cat("RMSE:", rmse_val, "\n")
+
+# 2. Calculate R-squared (variance explained)
+r2_val <- R2(predictions, test_data$poverty)
+cat("R-squared:", r2_val, "\n")
+
+# 3. Calculate Mean Absolute Error
+mae_val <- MAE(predictions, test_data$poverty)
+cat("MAE:", mae_val, "\n")
+
+rss_value <- sum((test_data$poverty - predictions)^2)
+cat("RSS:", rss_value, "\n")
 ```
 
 ```{r}
@@ -595,19 +676,40 @@ importance(rf_model)
 varImpPlot(rf_model)
 ```
 
+
 ```{r}
-# You must set importance = TRUE to calculate the advanced metrics
-rf_model <- randomForest(mpg ~ ., data = mtcars, importance = TRUE)
+rf_tuned <- randomForest(poverty ~ ., data = train_data, ntree = 500, mtry = 10)
+print(rf_tuned)
+```
 
-# Extract the importance scores
-# This is your equivalent to extract.coef()
-importance_scores <- importance(rf_model)
-print(importance_scores)
+```{r}
+# Make predictions (this part is now correct!)
+predictions <- predict(rf_tuned, test_data)
 
+# 1. Calculate Root Mean Squared Error
+rmse_val <- RMSE(predictions, test_data$poverty)
+cat("RMSE:", rmse_val, "\n")
+
+# 2. Calculate R-squared (variance explained)
+r2_val <- R2(predictions, test_data$poverty)
+cat("R-squared:", r2_val, "\n")
+
+# 3. Calculate Mean Absolute Error
+mae_val <- MAE(predictions, test_data$poverty)
+cat("MAE:", mae_val, "\n")
+
+rss_value <- sum((test_data$poverty - predictions)^2)
+cat("RSS:", rss_value, "\n")
+```
+
+```{r}
+importance(rf_tuned)
+varImpPlot(rf_tuned)
 ```
 
 
-# Support Vertor Regression
+# Support Vector Regression
+
 
 ```{r}
 # Install packages if you haven't already
@@ -622,7 +724,7 @@ library(e1071)
 set.seed(1)
 
 svr_model <- svm(poverty ~ ., 
-                 data = trainData, 
+                 data = train_data, 
                  type = "eps-regression", 
                  kernel = "radial",
                  cost = 15, 
@@ -634,32 +736,30 @@ summary(svr_model)
 
 ```{r}
 # Predict on test data
-testData$Predicted_Y <- predict(svr_model, testData)
+predicted_Y <- predict(svr_model, test_data)
 
 # Calculate Root Mean Squared Error (RMSE)
-error <- testData$poverty - testData$Predicted_Y
+error <- test_data$poverty - predicted_Y
 rmse <- sqrt(mean(error^2))
 
 # Print performance metric
 print(paste("Test RMSE:", round(rmse, 4)))
+
+rss_value <- sum((predicted_Y - test_data$poverty)^2)
+cat("RSS:", rss_value, "\n")
+
+# Calculate R-squared (variance explained)
+r2_val <- R2(predicted_Y, test_data$poverty)
+cat("R-squared:", r2_val, "\n")
+
+# Calculate Mean Absolute Error
+mae_val <- MAE(predicted_Y, test_data$poverty)
+cat("MAE:", mae_val, "\n")
 ```
 
-```{r}
-my_features <- "unemploy_rate"
-
-ggplot(testData) +
-  geom_point(aes(x = .data[[my_features]], y = poverty), color = "red", size = 2) +
-  geom_line(aes(x = .data[[my_features]], y = Predicted_Y), color = "blue", size = 1) +
-  labs(
-    title = "Support Vector Regression (Radial Kernel)",
-    x = my_features,
-    y = "Poverty Rate (%)"
-  ) +
-  theme_minimal()
-```
 
 ```{r}
-ggplot(testData, aes(x = Predicted_Y, y = poverty)) +
+ggplot(test_data, aes(x = predicted_Y, y = poverty)) +
   geom_point(color = "red", size = 2.5) +
   geom_abline(intercept = 0, slope = 1, color = "blue", linetype = "dashed", size = 1) +
   labs(
@@ -671,8 +771,9 @@ ggplot(testData, aes(x = Predicted_Y, y = poverty)) +
   theme_minimal()
 ```
 
+
 ```{r}
-set.seed(1)
+set.seed(3)
 
 # significance of each predictor in the SVR model using permutation importance
 # Install and load the vip package
@@ -680,7 +781,7 @@ if (!requireNamespace("vip", quietly = TRUE)) install.packages("vip")
 library(vip)
 
 # Filter out the prediction column so it doesn't look at its own outputs
-importance_data <- testData[, !names(testData) %in% c("Predicted_Y")]
+importance_data <- test_data[, !names(test_data) %in% c("Predicted_Y")]
 
 # Calculate and plot variable importance
 vip(
@@ -706,29 +807,24 @@ vip(
 # Comparison Script
 
 ```{r}
-rf <- rf_model
+rf <- rf_tuned
 svr <- svr_model
-lasso <- lasso_cv
+lasso <- fit.min
 ols <- fit1
 dt <- tree_model
+nn <- load_model_native("/Users/winniex/Desktop/WDS_2026_AI_HOME/Project/Models/nn_model_l2_poverty_prediction.keras")
 ```
 
+## Model Performance Comparison
 
-## Graph 1: Model Performance Comparison
-- **Filename:** `presentation_overview_chart.png`
-- **Type:** Bar chart
-- **Purpose:** Compare RMSE or R² across all 6 models (OLS, LASSO, Decision Tree, Random Forest, SVR, DNN)
-- **Placement:** Right side of executive summary slide
-- **R Code:**
 ```{r}
-library(ggplot2)
-library(dplyr)
-
 # Create data frame with model results
 model_results <- data.frame(
   Model = c("OLS", "LASSO", "Decision Tree", "Random Forest", "SVR", "Deep Neural Net"),
-  RMSE = c("0.623", "1.456", "1.67", "1.311", "1.367", ""),  # Insert your actual values
-  R_squared = c("0.931", "0.942", "0.418", "", "", "")  # Insert your actual values
+  RSS = c("8.34", "4.92", "20.6", "1.31", "0.506", "13.456"), 
+  R_squared = c("0.89", "0.918", "0.418", "0.964", "0.985", "0.803"),
+  RMSE = c("1.02", "0.784", "1.61", "0.405", "0.6094", "1.106"),
+  MAE = c("0.771", "0.593", "1.21", "0.319", "0.506", "0.956")  
 )
 
 # Bar chart for RMSE
@@ -740,58 +836,51 @@ ggplot(model_results, aes(x = reorder(Model, RMSE), y = RMSE, fill = Model)) +
        x = "Model", y = "Root Mean Squared Error (RMSE)") +
   theme_minimal() +
   theme(legend.position = "none")
+```
 
-ggsave("output/figures/presentation_overview_chart.png", width = 8, height = 5, dpi = 300)
+```{r}
+# Bar chart for RSS
+ggplot(model_results, aes(x = reorder(Model, RSS), y = RSS, fill = Model)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Model Performance Comparison",
+       subtitle = "Lower RSS = Better Performance",
+       x = "Model", y = "Residual Sum of Squares (RSS)") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+```{r}
+# Bar chart for R_squared
+ggplot(model_results, aes(x = reorder(Model, R_squared), y = R_squared, fill = Model)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Model Performance Comparison",
+       subtitle = "Higher R² = Better Performance",
+       x = "Model", y = "R-squared") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+```{r}
+# Bar chart for MAE
+ggplot(model_results, aes(x = reorder(Model, MAE), y = MAE, fill = Model)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Model Performance Comparison",
+       subtitle = "Lower MAE = Better Performance",
+       x = "Model", y = "Mean Absolute Error (MAE)") +
+  theme_minimal() +
+  theme(legend.position = "none")
 ```
 
 ---
 
-## Section 2: Research Question (1 graph)
+## Section: Data Sources (1 graph)
 
-### Graph 2: U.S. Poverty Map
-- **Filename:** `us_poverty_map.png`
-- **Type:** Choropleth map
-- **Purpose:** Show geographic distribution of poverty rates by state
-- **Placement:** Bottom of slide
-- **R Code:**
-```r
-library(maps)
-library(viridis)
-library(ggplot2)
+### Graph: Variable Categories Pie Chart
 
-# Load state data
-states_map <- map_data("state")
-
-# Merge with your poverty data
-# (Assuming you have a data frame called 'state_data' with columns: state, poverty)
-state_data$region <- tolower(state_data$state)
-
-map_data <- states_map %>%
-  left_join(state_data, by = "region")
-
-# Create choropleth
-ggplot(map_data, aes(x = long, y = lat, group = group, fill = poverty)) +
-  geom_polygon(color = "white", size = 0.2) +
-  scale_fill_viridis(option = "plasma", name = "Poverty Rate (%)") +
-  coord_map("albers", lat0 = 39, lat1 = 45) +
-  labs(title = "State Poverty Rates Across the United States (2023)") +
-  theme_void() +
-  theme(legend.position = "right")
-
-ggsave("output/figures/us_poverty_map.png", width = 10, height = 6, dpi = 300)
-```
-
----
-
-## Section 3: Data Sources (1 graph)
-
-### Graph 3: Variable Categories Pie Chart
-- **Filename:** `variable_categories_pie.png`
-- **Type:** Pie/donut chart
-- **Purpose:** Show distribution of 30 variables by category
-- **Placement:** Right side of slide
-- **R Code:**
-```r
+```{r}
 # Create category counts
 categories <- data.frame(
   Category = c("Demographic", "Economic", "Policy", "Education", "Social", "Infrastructure"),
@@ -805,76 +894,20 @@ ggplot(categories, aes(x = "", y = Count, fill = Category)) +
        subtitle = "Total: 30 predictors") +
   theme_void() +
   scale_fill_brewer(palette = "Set3")
-
-ggsave("output/figures/variable_categories_pie.png", width = 6, height = 6, dpi = 300)
 ```
 
 ---
 
-## Section 4: Dataset Overview (1 graph/table)
+## Section: EDA - Distribution Analysis (3 graphs)
 
-### Graph 4: Summary Statistics Table
-- **Filename:** `summary_statistics_table.png`
-- **Type:** Formatted table
-- **Purpose:** Show descriptive statistics for key variables
-- **Placement:** Center of slide
-- **R Code:**
-```r
-library(knitr)
-library(kableExtra)
-
-# Create summary statistics
-summary_stats <- data %>%
-  select(poverty, log_income, unemploy_rate, crime) %>%
-  summarise(across(everything(),
-                   list(Mean = mean,
-                        Median = median,
-                        SD = sd,
-                        Min = min,
-                        Max = max))) %>%
-  pivot_longer(everything(),
-               names_to = c("Variable", "Statistic"),
-               names_sep = "_") %>%
-  pivot_wider(names_from = Statistic, values_from = value)
-
-# Create formatted table
-kable(summary_stats, format = "html", digits = 2,
-      caption = "Summary Statistics for Key Variables") %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed")) %>%
-  save_kable("output/figures/summary_statistics_table.png")
-```
-
----
-
-## Section 5: EDA - Distribution Analysis (3 graphs)
-
-### Graph 5: Poverty Distribution Histogram
-- **Filename:** `poverty_distribution_histogram.png`
-- **Type:** Histogram with normal curve overlay
-- **Purpose:** Show distribution of outcome variable
-- **Placement:** Left side of slide
-- **R Code:**
-```r
-ggplot(data, aes(x = poverty)) +
-  geom_histogram(aes(y = ..density..), bins = 15, fill = "steelblue", alpha = 0.7) +
-  stat_function(fun = dnorm,
-                args = list(mean = mean(data$poverty), sd = sd(data$poverty)),
-                color = "red", size = 1) +
-  labs(title = "Distribution of State Poverty Rates",
-       x = "Poverty Rate (%)", y = "Density") +
-  theme_minimal()
-
-ggsave("output/figures/poverty_distribution_histogram.png", width = 6, height = 4, dpi = 300)
-```
-
-### Graph 6: Poverty Boxplot
+### Graph: Poverty Boxplot
 - **Filename:** `poverty_boxplot.png`
 - **Type:** Boxplot
 - **Purpose:** Show quartiles and outliers
 - **Placement:** Right side of slide
 - **R Code:**
-```r
-ggplot(data, aes(y = poverty, x = "")) +
+```{r}
+pov_box <- ggplot(state_data, aes(y = poverty, x = "")) +
   geom_boxplot(fill = "lightblue", outlier.color = "red", outlier.size = 3) +
   coord_flip() +
   labs(title = "Poverty Rate Distribution",
@@ -883,23 +916,23 @@ ggplot(data, aes(y = poverty, x = "")) +
   theme_minimal() +
   theme(axis.text.y = element_blank())
 
-ggsave("output/figures/poverty_boxplot.png", width = 6, height = 3, dpi = 300)
+pov_box
 ```
 
-### Graph 7: Predictor Distributions Grid
+### Graph: Predictor Distributions Grid
 - **Filename:** `predictor_distributions_grid.png`
 - **Type:** Faceted histograms (small multiples)
 - **Purpose:** Show distribution of all 30 predictors
 - **Placement:** Full slide (may need 2 slides)
 - **R Code:**
-```r
+```{r}
 # Reshape data to long format
-data_long <- data %>%
+data_long <- state_data %>%
   select(-state) %>%  # Remove state names
   pivot_longer(everything(), names_to = "variable", values_to = "value")
 
 # Create faceted histograms
-ggplot(data_long, aes(x = value)) +
+pdg <- ggplot(data_long, aes(x = value)) +
   geom_histogram(bins = 10, fill = "steelblue", alpha = 0.7) +
   facet_wrap(~ variable, scales = "free", ncol = 5) +
   labs(title = "Distribution of All Predictor Variables",
@@ -907,11 +940,6 @@ ggplot(data_long, aes(x = value)) +
   theme_minimal() +
   theme(strip.text = element_text(size = 8))
 
-ggsave("output/figures/predictor_distributions_grid.png", width = 15, height = 10, dpi = 300)
+pdg
 ```
 
-
-
-
-
- 
